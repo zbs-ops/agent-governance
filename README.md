@@ -1,6 +1,6 @@
 # Agent Governance
 
-**[Open the live demo →](https://agent-governance.vercel.app)**
+**[Open the live demo →](https://agent-governance-theta.vercel.app)**
 
 A control plane that sits between AI agents and the things they can break.
 
@@ -47,7 +47,7 @@ The difference between *"we have logs"* and *"we can prove what happened"*.
 
 ## Try it in thirty seconds
 
-1. Open the [live demo](https://agent-governance.vercel.app).
+1. Open the [live demo](https://agent-governance-theta.vercel.app).
 2. Pick **Move funds to an unknown wallet** → **Propose action**. Refused on sight.
 3. Pick **Refund $84.00** → it stops and waits for you. Approve it and watch the budget move.
 4. Hit **Verify chain** → all entries check out.
