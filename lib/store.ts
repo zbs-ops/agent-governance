@@ -1,0 +1,230 @@
+import { appendEntry, verifyChain } from './audit';
+import { evaluate, money } from './policy';
+import type {
+  ActionProposal,
+  AuditEntry,
+  Budget,
+  ChainVerification,
+  GatedAction,
+} from './types';
+
+/**
+ * State lives in memory. That is a deliberate choice for a demo you can open
+ * without provisioning anything — and it is the only part of this project that
+ * is not production-shaped.
+ *
+ * Everything reaches it through the `Store` interface below, so swapping in
+ * Postgres means writing one adapter and changing one line in `getStore()`.
+ * Nothing above this file knows where the rows live.
+ */
+
+export interface Store {
+  budget(): Budget;
+  actions(): GatedAction[];
+  chain(): AuditEntry[];
+  propose(input: {
+    agent: string;
+    tool: string;
+    args: Record<string, unknown>;
+    estimatedCostCents: number;
+  }): GatedAction;
+  decide(id: string, approve: boolean, reviewer: string, note?: string): GatedAction | undefined;
+  verify(): ChainVerification;
+  /** Demo only: corrupts one entry so the verifier has something to catch. */
+  tamper(seq: number): boolean;
+  reset(): void;
+}
+
+const BUDGET_LIMIT_CENTS = 50_000; // $500 per run.
+
+class MemoryStore implements Store {
+  private budgetState: Budget = { spentCents: 0, limitCents: BUDGET_LIMIT_CENTS };
+
+  private gated: GatedAction[] = [];
+
+  private ledger: AuditEntry[] = [];
+
+  private counter = 0;
+
+  constructor() {
+    // Seeded exactly once, here. Seeding from anywhere else risks running twice
+    // against one store and inventing actions nobody proposed.
+    seed(this);
+  }
+
+  budget(): Budget {
+    return { ...this.budgetState };
+  }
+
+  actions(): GatedAction[] {
+    return [...this.gated].reverse();
+  }
+
+  chain(): AuditEntry[] {
+    return [...this.ledger];
+  }
+
+  propose(input: {
+    agent: string;
+    tool: string;
+    args: Record<string, unknown>;
+    estimatedCostCents: number;
+  }): GatedAction {
+    this.counter += 1;
+    const proposal: ActionProposal = {
+      id: `act_${String(this.counter).padStart(4, '0')}`,
+      agent: input.agent,
+      tool: input.tool,
+      args: input.args,
+      estimatedCostCents: input.estimatedCostCents,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.record('PROPOSED', proposal.agent, proposal.id, {
+      tool: proposal.tool,
+      estimated: money(proposal.estimatedCostCents),
+    });
+
+    const decision = evaluate(proposal, this.budgetState);
+    this.record('POLICY_EVALUATED', 'policy-engine', proposal.id, {
+      verdict: decision.verdict,
+      tier: decision.tier,
+      decidedBy: decision.decidedBy,
+    });
+
+    let gated: GatedAction;
+    if (decision.verdict === 'DENY') {
+      gated = { proposal, decision, state: 'BLOCKED' };
+      this.record('BLOCKED', 'policy-engine', proposal.id, { why: decision.reasons.at(-1) });
+    } else if (decision.verdict === 'REQUIRE_APPROVAL') {
+      gated = { proposal, decision, state: 'PENDING_APPROVAL' };
+    } else {
+      gated = { proposal, decision, state: 'AUTO_ALLOWED' };
+      this.execute(gated);
+    }
+
+    this.gated.push(gated);
+    return gated;
+  }
+
+  decide(id: string, approve: boolean, reviewer: string, note?: string): GatedAction | undefined {
+    const gated = this.gated.find((a) => a.proposal.id === id);
+    if (!gated || gated.state !== 'PENDING_APPROVAL') return undefined;
+
+    gated.reviewedBy = reviewer;
+    gated.reviewNote = note;
+
+    if (!approve) {
+      gated.state = 'REJECTED';
+      this.record('REJECTED', reviewer, id, { note: note ?? null });
+      return gated;
+    }
+
+    gated.state = 'APPROVED';
+    this.record('APPROVED', reviewer, id, { note: note ?? null });
+    this.execute(gated);
+    return gated;
+  }
+
+  verify(): ChainVerification {
+    return verifyChain(this.ledger);
+  }
+
+  tamper(seq: number): boolean {
+    const entry = this.ledger.find((e) => e.seq === seq);
+    if (!entry) return false;
+    // Rewrite history the way someone covering their tracks would: change the
+    // content, leave the hash alone, hope nobody recomputes it.
+    entry.detail = { ...entry.detail, tampered: 'this value was changed after the fact' };
+    return true;
+  }
+
+  /** Replaced wholesale by `getStore().reset()`; see below. */
+  reset(): void {
+    this.budgetState = { spentCents: 0, limitCents: BUDGET_LIMIT_CENTS };
+    this.gated = [];
+    this.ledger = [];
+    this.counter = 0;
+  }
+
+  /** Spend is only counted when something actually runs, never when it is proposed. */
+  private execute(gated: GatedAction): void {
+    this.budgetState.spentCents += gated.proposal.estimatedCostCents;
+    gated.state = 'EXECUTED';
+    this.record('EXECUTED', 'runtime', gated.proposal.id, {
+      tool: gated.proposal.tool,
+      cost: money(gated.proposal.estimatedCostCents),
+    });
+  }
+
+  private record(
+    event: AuditEntry['event'],
+    actor: string,
+    proposalId: string,
+    detail: Record<string, unknown>,
+  ): void {
+    appendEntry(this.ledger, { at: new Date().toISOString(), event, actor, proposalId, detail });
+  }
+}
+
+/** A handful of realistic proposals so the page is never empty on first load. */
+function seed(store: Store): void {
+  store.propose({
+    agent: 'support-agent',
+    tool: 'crm.read',
+    args: { customer: 'acme-industries' },
+    estimatedCostCents: 0,
+  });
+  store.propose({
+    agent: 'support-agent',
+    tool: 'ticket.create',
+    args: { subject: 'Duplicate charge on invoice 8842', priority: 'high' },
+    estimatedCostCents: 0,
+  });
+  store.propose({
+    agent: 'billing-agent',
+    tool: 'refund.issue',
+    args: { invoice: '8842', amount_cents: 12_400, reason: 'duplicate charge' },
+    estimatedCostCents: 12_400,
+  });
+  store.propose({
+    agent: 'growth-agent',
+    tool: 'email.send',
+    args: { to: '2,300 customers', template: 'winback-q3' },
+    estimatedCostCents: 900,
+  });
+  store.propose({
+    agent: 'rogue-agent',
+    tool: 'db.drop',
+    args: { table: 'customers' },
+    estimatedCostCents: 0,
+  });
+  store.propose({
+    agent: 'rogue-agent',
+    tool: 'crypto.transfer',
+    args: { to: '0xbeef…', amount: 'all' },
+    estimatedCostCents: 0,
+  });
+}
+
+/**
+ * One store per server instance. Serverless functions are recycled, so a cold
+ * start reseeds — which is exactly what you want from a demo anyone can open.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __agentGovernanceStore: Store | undefined;
+}
+
+export function getStore(): Store {
+  if (!globalThis.__agentGovernanceStore) {
+    globalThis.__agentGovernanceStore = new MemoryStore();
+  }
+  return globalThis.__agentGovernanceStore;
+}
+
+/** A clean slate is a new store, not a store that has been emptied and refilled. */
+export function resetStore(): Store {
+  globalThis.__agentGovernanceStore = new MemoryStore();
+  return globalThis.__agentGovernanceStore;
+}
