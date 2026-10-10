@@ -59,6 +59,9 @@ export const POLICY: PolicyRule[] = [
   },
 ];
 
+/** Lowercase ASCII segments joined by dots, at least two of them: `stripe.refund`. */
+const TOOL_NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
+
 function matches(pattern: string, tool: string): boolean {
   if (pattern.endsWith('*')) return tool.startsWith(pattern.slice(0, -1));
   return pattern === tool;
@@ -71,6 +74,19 @@ function ruleFor(tool: string): PolicyRule | undefined {
 /** Hard stops that override the tier entirely. Order matters and is asserted in tests. */
 export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecision {
   const reasons: string[] = [];
+
+  // 0. A tool name has to look like a tool name before it is matched against anything.
+  //    Wildcards match by prefix, so without this "search.x/../stripe.refund" or a
+  //    newline-smuggled second tool would ride `search.*` straight through as a read,
+  //    and a lookalike letter would put a fake refund in front of a human approver.
+  if (!TOOL_NAME.test(proposal.tool)) {
+    return {
+      verdict: 'DENY',
+      tier: 3,
+      reasons: [`${JSON.stringify(proposal.tool)} is not a well-formed tool name.`],
+      decidedBy: 'malformed-tool',
+    };
+  }
 
   // 1. Unknown tools fail closed. An agent that invents a tool name is either
   //    hallucinating or probing, and neither deserves the benefit of the doubt.

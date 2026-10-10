@@ -66,8 +66,11 @@ reorder, or move into a database later without touching the engine.
 | 2 | Internal writes — tickets, CRM updates | Runs, recorded in full |
 | 3 | Money, customers, production, deletes | **Waits for a human** |
 
-Four rules override the tier entirely:
+Five rules override the tier entirely:
 
+- **Malformed tool name** → refused before matching. Wildcards match by prefix, so a name
+  like `search.x/../stripe.refund`, a newline-smuggled second tool, or a lookalike letter
+  never gets the chance to borrow another rule.
 - **Unknown tool** → refused. Fails closed.
 - **Malformed cost** → refused. A negative, fractional, or non-numeric estimate would slip
   past the budget math, so it never reaches it.
@@ -86,7 +89,8 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 30 tests
+npm test         # 50 tests (unit + eval)
+npm run eval     # adversarial scorecard only
 ```
 
 ---
@@ -105,9 +109,19 @@ components/      the dashboard
 deployed on Vercel. No dependencies beyond the framework itself — the policy engine and
 the hash chain are plain TypeScript, which is why they're easy to test and easy to read.
 
+### Adversarial eval
+
+`evals/` asks a different question from the unit tests: when an agent is confused, careless,
+or probing, does the gate still give the safe answer? 19 scenarios across four categories
+(baseline, tool spoofing, cost manipulation, budget pressure), each with the verdict a careful
+operator would want. `npm run eval` prints a scorecard and fails on any miss. CI runs it on
+every push, alongside typecheck, tests and a production build.
+
+Writing it found five spoofing holes in the first run (14/19). They're closed now (19/19).
+
 ### Tests
 
-30 tests, and they're aimed at the things that would actually hurt:
+50 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
