@@ -102,3 +102,27 @@ describe('the properties that make it trustworthy', () => {
     }
   });
 });
+
+describe('cost estimates the gate cannot trust', () => {
+  // The estimate comes from the agent, and agents lie. A negative cost would pass the
+  // budget check and then, once executed, hand budget back. NaN slips past every
+  // comparison, because every comparison with NaN is false.
+  it.each([
+    ['negative', -5_000],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['fractional cents', 12.5],
+  ])('refuses a %s estimate', (_label, cost) => {
+    const decision = evaluate(proposal('ticket.create', cost), BUDGET);
+    expect(decision.verdict).toBe('DENY');
+    expect(decision.decidedBy).toBe('malformed-cost');
+  });
+
+  it('refuses it even when the tool would otherwise wait for a human', () => {
+    expect(evaluate(proposal('stripe.refund', -5_000), BUDGET).decidedBy).toBe('malformed-cost');
+  });
+
+  it('still lets a zero-cost read through', () => {
+    expect(evaluate(proposal('crm.read', 0), BUDGET).verdict).toBe('ALLOW');
+  });
+});

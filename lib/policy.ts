@@ -85,7 +85,16 @@ export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecisi
   }
   reasons.push(rule.describe);
 
-  // 2. Budget is checked before anything else is weighed, because a runaway
+  // 2. The estimate has to be a number the budget math can trust. A negative cost
+  //    passes the cap and then hands budget back when it runs, and NaN passes every
+  //    check below, because every comparison with NaN is false.
+  const cost = proposal.estimatedCostCents;
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    reasons.push(`An estimated cost of ${String(cost)} cents is not a whole, non-negative amount.`);
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost' };
+  }
+
+  // 3. Budget is checked before anything else is weighed, because a runaway
   //    agent is the failure that costs real money while everyone is asleep.
   const projected = budget.spentCents + proposal.estimatedCostCents;
   if (projected > budget.limitCents) {
@@ -95,7 +104,7 @@ export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecisi
     return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'budget-exceeded' };
   }
 
-  // 3. A single action asking for more than a quarter of the whole budget is
+  // 4. A single action asking for more than a quarter of the whole budget is
   //    suspicious even when it fits. Agents do not usually need that much at once.
   if (proposal.estimatedCostCents > budget.limitCents / 4) {
     reasons.push(

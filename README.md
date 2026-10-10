@@ -66,9 +66,11 @@ reorder, or move into a database later without touching the engine.
 | 2 | Internal writes — tickets, CRM updates | Runs, recorded in full |
 | 3 | Money, customers, production, deletes | **Waits for a human** |
 
-Three rules override the tier entirely:
+Four rules override the tier entirely:
 
 - **Unknown tool** → refused. Fails closed.
+- **Malformed cost** → refused. A negative, fractional, or non-numeric estimate would slip
+  past the budget math, so it never reaches it.
 - **Over budget** → refused, checked before anything else is weighed.
 - **One unusually large spend** → escalated to a human even when it fits, because an agent
   asking for a quarter of the entire budget in a single action is worth a second look.
@@ -84,7 +86,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 24 tests
+npm test         # 30 tests
 ```
 
 ---
@@ -105,7 +107,7 @@ the hash chain are plain TypeScript, which is why they're easy to test and easy 
 
 ### Tests
 
-24 tests, and they're aimed at the things that would actually hurt:
+30 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -114,6 +116,8 @@ the hash chain are plain TypeScript, which is why they're easy to test and easy 
 - budget is proven to be checked *before* the tier, so a tier-1 read still gets refused when
   the money has run out
 - spend landing exactly on the cap is allowed; one cent over is not
+- a negative or NaN cost estimate is refused before the budget is checked, so an agent
+  can't pass the cap and then hand budget back when the action runs
 
 ---
 
