@@ -22,6 +22,12 @@ export interface PolicyDecision {
   reasons: string[];
   /** The rule that produced the final verdict. */
   decidedBy: string;
+  /**
+   * What the gate charged against the budget: the larger of the agent's estimate and
+   * any amount the arguments themselves will move. 0 when the gate refused before
+   * it could trust either number.
+   */
+  costCents: number;
 }
 
 export type ProposalState =
