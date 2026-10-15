@@ -82,6 +82,10 @@ Six rules override the tier entirely:
 - **One unusually large spend** → escalated to a human even when it fits, because an agent
   asking for a quarter of the entire budget in a single action is worth a second look.
 
+And one rule at approval time: **an agent can't approve its own proposal.** The agent that
+asked can withdraw it, but a yes has to come from someone else, or "who approved this?"
+has no honest answer. The API answers a self-approval with 403 and writes nothing.
+
 Two properties are enforced by tests rather than hoped for: the engine is **deterministic**
 (same proposal, same budget, same verdict, every time) and it **always explains itself**,
 because the reason it gives is the reason that lands in the audit log.
@@ -93,7 +97,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 64 tests (unit + eval)
+npm test         # 69 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -125,7 +129,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. T
 
 ### Tests
 
-64 tests, and they're aimed at the things that would actually hurt:
+69 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -138,6 +142,8 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. T
   can't pass the cap and then hand budget back when the action runs
 - an agent that estimates $1 while its arguments refund $90 is escalated, shown the real
   amount, refused if the real amount breaks the cap, and charged the real amount once approved
+- an agent approving its own proposal is refused (case and spacing don't help), leaving the
+  action pending with nothing charged and nothing written to the ledger
 
 ---
 

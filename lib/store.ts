@@ -37,6 +37,19 @@ export interface Store {
 
 const BUDGET_LIMIT_CENTS = 50_000; // $500 per run.
 
+/** Raised when the agent that proposed an action tries to approve it. */
+export class SelfApprovalError extends Error {
+  constructor(agent: string) {
+    super(`"${agent}" proposed this action, so it can't also approve it.`);
+    this.name = 'SelfApprovalError';
+  }
+}
+
+/** Identity comparison that a stray capital or space can't get around. */
+function sameActor(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 class MemoryStore implements Store {
   private budgetState: Budget = { spentCents: 0, limitCents: BUDGET_LIMIT_CENTS };
 
@@ -110,6 +123,13 @@ class MemoryStore implements Store {
   decide(id: string, approve: boolean, reviewer: string, note?: string): GatedAction | undefined {
     const gated = this.gated.find((a) => a.proposal.id === id);
     if (!gated || gated.state !== 'PENDING_APPROVAL') return undefined;
+
+    // Separation of duties: the agent that asked can't be the one who says yes. Checked
+    // before anything is written, so a refused self-approval leaves no trace in state,
+    // budget, or ledger. Withdrawing (rejecting) your own proposal is still fine.
+    if (approve && sameActor(reviewer, gated.proposal.agent)) {
+      throw new SelfApprovalError(gated.proposal.agent);
+    }
 
     gated.reviewedBy = reviewer;
     gated.reviewNote = note;
