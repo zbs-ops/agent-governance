@@ -147,13 +147,16 @@ class MemoryStore implements Store {
     this.counter = 0;
   }
 
-  /** Spend is only counted when something actually runs, never when it is proposed. */
+  /**
+   * Spend is only counted when something actually runs, never when it is proposed, and it
+   * is the gate's cost, not the agent's estimate, so an understated refund is charged in full.
+   */
   private execute(gated: GatedAction): void {
-    this.budgetState.spentCents += gated.proposal.estimatedCostCents;
+    this.budgetState.spentCents += gated.decision.costCents;
     gated.state = 'EXECUTED';
     this.record('EXECUTED', 'runtime', gated.proposal.id, {
       tool: gated.proposal.tool,
-      cost: money(gated.proposal.estimatedCostCents),
+      cost: money(gated.decision.costCents),
     });
   }
 

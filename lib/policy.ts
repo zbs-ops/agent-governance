@@ -85,6 +85,7 @@ export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecisi
       tier: 3,
       reasons: [`${JSON.stringify(proposal.tool)} is not a well-formed tool name.`],
       decidedBy: 'malformed-tool',
+      costCents: 0,
     };
   }
 
@@ -97,49 +98,74 @@ export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecisi
       tier: 3,
       reasons: [`"${proposal.tool}" is not a tool this agent is allowed to call.`],
       decidedBy: 'unknown-tool',
+      costCents: 0,
     };
   }
   reasons.push(rule.describe);
 
-  // 2. The estimate has to be a number the budget math can trust. A negative cost
-  //    passes the cap and then hands budget back when it runs, and NaN passes every
-  //    check below, because every comparison with NaN is false.
-  const cost = proposal.estimatedCostCents;
-  if (!Number.isSafeInteger(cost) || cost < 0) {
-    reasons.push(`An estimated cost of ${String(cost)} cents is not a whole, non-negative amount.`);
-    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost' };
+  // 2. Both numbers have to be ones the budget math can trust: the agent's estimate,
+  //    and the amount the arguments will actually move, if they name one. A negative
+  //    cost passes the cap and then hands budget back when it runs, and NaN passes
+  //    every check below, because every comparison with NaN is false.
+  const estimate = proposal.estimatedCostCents;
+  if (!isCents(estimate)) {
+    reasons.push(`An estimated cost of ${String(estimate)} cents is not a whole, non-negative amount.`);
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost', costCents: 0 };
   }
+  const argAmount = proposal.args.amount_cents;
+  if (argAmount !== undefined && !isCents(argAmount)) {
+    reasons.push(`The arguments ask to move ${String(argAmount)} cents, which is not a whole, non-negative amount.`);
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost', costCents: 0 };
+  }
+
+  // The estimate is the agent's word; amount_cents is what the call will do. Charge
+  // whichever is larger, so understating the estimate can't buy room under the cap.
+  const cost = Math.max(estimate, typeof argAmount === 'number' ? argAmount : 0);
+  const understated = cost > estimate;
 
   // 3. Budget is checked before anything else is weighed, because a runaway
   //    agent is the failure that costs real money while everyone is asleep.
-  const projected = budget.spentCents + proposal.estimatedCostCents;
+  const projected = budget.spentCents + cost;
   if (projected > budget.limitCents) {
     reasons.push(
       `This would put spend at ${money(projected)} against a ${money(budget.limitCents)} cap.`,
     );
-    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'budget-exceeded' };
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'budget-exceeded', costCents: cost };
   }
 
-  // 4. A single action asking for more than a quarter of the whole budget is
-  //    suspicious even when it fits. Agents do not usually need that much at once.
-  if (proposal.estimatedCostCents > budget.limitCents / 4) {
+  // 4. An agent that says one number and asks to move a bigger one has told the gate
+  //    two different things. That is worth a human's eyes even on a tool that would
+  //    normally run unattended, and the human should see the real amount.
+  if (understated) {
     reasons.push(
-      `${money(proposal.estimatedCostCents)} in one action is unusually large — escalated for review.`,
+      `The agent estimated ${money(estimate)}, but the arguments move ${money(cost)} — escalated for review.`,
     );
-    return { verdict: 'REQUIRE_APPROVAL', tier: 3, reasons, decidedBy: 'large-single-spend' };
+    return { verdict: 'REQUIRE_APPROVAL', tier: 3, reasons, decidedBy: 'cost-understated', costCents: cost };
+  }
+
+  // 5. A single action asking for more than a quarter of the whole budget is
+  //    suspicious even when it fits. Agents do not usually need that much at once.
+  if (cost > budget.limitCents / 4) {
+    reasons.push(`${money(cost)} in one action is unusually large — escalated for review.`);
+    return { verdict: 'REQUIRE_APPROVAL', tier: 3, reasons, decidedBy: 'large-single-spend', costCents: cost };
   }
 
   if (rule.tier === 3) {
     reasons.push('Tier 3 always waits for a human.');
-    return { verdict: 'REQUIRE_APPROVAL', tier: 3, reasons, decidedBy: rule.id };
+    return { verdict: 'REQUIRE_APPROVAL', tier: 3, reasons, decidedBy: rule.id, costCents: cost };
   }
 
   if (rule.tier === 2) {
     reasons.push('Tier 2 runs unattended but is recorded in full.');
-    return { verdict: 'ALLOW', tier: 2, reasons, decidedBy: rule.id };
+    return { verdict: 'ALLOW', tier: 2, reasons, decidedBy: rule.id, costCents: cost };
   }
 
-  return { verdict: 'ALLOW', tier: 1, reasons, decidedBy: rule.id };
+  return { verdict: 'ALLOW', tier: 1, reasons, decidedBy: rule.id, costCents: cost };
+}
+
+/** A whole, non-negative number of cents that the budget arithmetic can trust. */
+function isCents(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 export function money(cents: number): string {

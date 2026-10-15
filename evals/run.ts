@@ -14,7 +14,7 @@ export function runScenario(scenario: Scenario): Result {
       id: `eval_${scenario.id}`,
       agent: 'eval-harness',
       tool: scenario.tool,
-      args: {},
+      args: scenario.args ?? {},
       estimatedCostCents: scenario.costCents,
       createdAt: '2026-01-01T00:00:00.000Z',
     },
