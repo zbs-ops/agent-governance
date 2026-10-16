@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { SelfApprovalError, resetStore } from './store';
+import { mintApprovalToken } from './approvals';
+import { ApprovalAuthError, SelfApprovalError, resetStore } from './store';
+
+const HUMAN = 'you@company.com';
+const approve = (id: string) => mintApprovalToken(id, HUMAN);
 
 function pendingRefund() {
   const store = resetStore();
@@ -43,9 +47,62 @@ describe('who is allowed to approve', () => {
     expect(store.decide(gated.proposal.id, false, 'billing-agent')?.state).toBe('REJECTED');
   });
 
-  it('lets a different reviewer approve', () => {
+  it('lets a different, authenticated reviewer approve', () => {
     const { store, gated } = pendingRefund();
-    expect(store.decide(gated.proposal.id, true, 'you@company.com')?.state).toBe('EXECUTED');
+    const id = gated.proposal.id;
+    expect(store.decide(id, true, HUMAN, undefined, approve(id))?.state).toBe('EXECUTED');
+  });
+});
+
+describe('authenticating the approver', () => {
+  // PR #4 stopped an agent approving as itself; this stops it approving as someone else.
+  // An approval must carry a token only the named reviewer's key can produce.
+
+  it('refuses an approval with no token', () => {
+    const { store, gated } = pendingRefund();
+    expect(() => store.decide(gated.proposal.id, true, HUMAN)).toThrow(ApprovalAuthError);
+  });
+
+  it('refuses a made-up token', () => {
+    const { store, gated } = pendingRefund();
+    expect(() => store.decide(gated.proposal.id, true, HUMAN, undefined, 'not-a-real-token')).toThrow(
+      ApprovalAuthError,
+    );
+  });
+
+  it("refuses a token minted for a different proposal (no replay)", () => {
+    const { store, gated } = pendingRefund();
+    const other = store.propose({
+      agent: 'billing-agent',
+      tool: 'stripe.refund',
+      args: { invoice: '7003', amount_cents: 5_000 },
+      estimatedCostCents: 5_000,
+    });
+    const wrongProposalToken = mintApprovalToken(other.proposal.id, HUMAN);
+    expect(() => store.decide(gated.proposal.id, true, HUMAN, undefined, wrongProposalToken)).toThrow(
+      ApprovalAuthError,
+    );
+  });
+
+  it('refuses an unregistered reviewer even if they send a token', () => {
+    const { store, gated } = pendingRefund();
+    expect(() => store.decide(gated.proposal.id, true, 'stranger', undefined, 'anything')).toThrow(
+      ApprovalAuthError,
+    );
+  });
+
+  it('records nothing and charges nothing when the token is bad', () => {
+    const { store, gated } = pendingRefund();
+    const spentBefore = store.budget().spentCents;
+    const ledgerBefore = store.chain().length;
+    expect(() => store.decide(gated.proposal.id, true, HUMAN)).toThrow();
+    expect(store.budget().spentCents).toBe(spentBefore);
+    expect(store.chain().length).toBe(ledgerBefore);
+  });
+
+  it('needs no token to reject', () => {
+    const { store, gated } = pendingRefund();
+    expect(store.decide(gated.proposal.id, false, HUMAN)?.state).toBe('REJECTED');
   });
 });
 
@@ -63,7 +120,7 @@ describe('what the store charges when an action runs', () => {
     expect(gated.state).toBe('PENDING_APPROVAL');
     expect(gated.decision.decidedBy).toBe('cost-understated');
 
-    store.decide(gated.proposal.id, true, 'reviewer');
+    store.decide(gated.proposal.id, true, HUMAN, undefined, approve(gated.proposal.id));
     // $90.00 actually moved, so $90.00 comes off the budget, not the $1.00 the agent claimed.
     expect(store.budget().spentCents - before).toBe(9_000);
   });

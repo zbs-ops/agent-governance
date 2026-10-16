@@ -82,9 +82,16 @@ Six rules override the tier entirely:
 - **One unusually large spend** → escalated to a human even when it fits, because an agent
   asking for a quarter of the entire budget in a single action is worth a second look.
 
-And one rule at approval time: **an agent can't approve its own proposal.** The agent that
-asked can withdraw it, but a yes has to come from someone else, or "who approved this?"
-has no honest answer. The API answers a self-approval with 403 and writes nothing.
+Two rules at approval time:
+
+- **An agent can't approve its own proposal.** The agent that asked can withdraw it, but a
+  yes has to come from someone else, or "who approved this?" has no honest answer.
+- **An approval has to be authenticated.** The reviewer isn't just a name any more: an
+  approval must carry a token only that reviewer's key can produce, bound to the specific
+  proposal. So an agent can't approve by typing a human's name, and a token for one action
+  can't be replayed onto another. Rejection needs no token. The API answers a self-approval
+  or a bad token with 403 and writes nothing. (The keys are in-memory for the demo; the shape
+  is what a real per-user secret behind an identity provider would check.)
 
 Two properties are enforced by tests rather than hoped for: the engine is **deterministic**
 (same proposal, same budget, same verdict, every time) and it **always explains itself**,
@@ -97,7 +104,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 69 tests (unit + eval)
+npm test         # 81 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -106,6 +113,7 @@ npm run eval     # adversarial scorecard only
 ## What's inside
 
 ```
+lib/approvals.ts the approval tokens — a reviewer proves their identity to say yes
 lib/policy.ts    the gate — rules as data, deterministic, fails closed
 lib/audit.ts     the hash chain — append, and verify by recomputing every hash
 lib/store.ts     state behind an interface, so the storage is swappable
@@ -129,7 +137,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. T
 
 ### Tests
 
-69 tests, and they're aimed at the things that would actually hurt:
+81 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -144,6 +152,8 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. T
   amount, refused if the real amount breaks the cap, and charged the real amount once approved
 - an agent approving its own proposal is refused (case and spacing don't help), leaving the
   action pending with nothing charged and nothing written to the ledger
+- an approval with no token, a forged token, or a token minted for a different proposal is
+  refused; only a token bound to this proposal and this reviewer's key lets it through
 
 ---
 
