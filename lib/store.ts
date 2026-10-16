@@ -1,4 +1,5 @@
 import { appendEntry, verifyChain } from './audit';
+import { verifyApprovalToken } from './approvals';
 import { evaluate, money } from './policy';
 import type {
   ActionProposal,
@@ -28,7 +29,13 @@ export interface Store {
     args: Record<string, unknown>;
     estimatedCostCents: number;
   }): GatedAction;
-  decide(id: string, approve: boolean, reviewer: string, note?: string): GatedAction | undefined;
+  decide(
+    id: string,
+    approve: boolean,
+    reviewer: string,
+    note?: string,
+    token?: string,
+  ): GatedAction | undefined;
   verify(): ChainVerification;
   /** Demo only: corrupts one entry so the verifier has something to catch. */
   tamper(seq: number): boolean;
@@ -42,6 +49,14 @@ export class SelfApprovalError extends Error {
   constructor(agent: string) {
     super(`"${agent}" proposed this action, so it can't also approve it.`);
     this.name = 'SelfApprovalError';
+  }
+}
+
+/** Raised when an approval arrives without a valid token for the named reviewer. */
+export class ApprovalAuthError extends Error {
+  constructor(reviewer: string) {
+    super(`"${reviewer}" did not present a valid approval token.`);
+    this.name = 'ApprovalAuthError';
   }
 }
 
@@ -120,7 +135,13 @@ class MemoryStore implements Store {
     return gated;
   }
 
-  decide(id: string, approve: boolean, reviewer: string, note?: string): GatedAction | undefined {
+  decide(
+    id: string,
+    approve: boolean,
+    reviewer: string,
+    note?: string,
+    token?: string,
+  ): GatedAction | undefined {
     const gated = this.gated.find((a) => a.proposal.id === id);
     if (!gated || gated.state !== 'PENDING_APPROVAL') return undefined;
 
@@ -129,6 +150,14 @@ class MemoryStore implements Store {
     // budget, or ledger. Withdrawing (rejecting) your own proposal is still fine.
     if (approve && sameActor(reviewer, gated.proposal.agent)) {
       throw new SelfApprovalError(gated.proposal.agent);
+    }
+
+    // Authenticate the approver. PR #4 kept an agent from approving as itself, but the
+    // reviewer was still only a name: an agent could type a human's. An approval must now
+    // carry a token only that reviewer's key can produce, bound to this proposal. Rejection
+    // needs no token — withdrawing an action can't cause harm.
+    if (approve && !verifyApprovalToken(id, reviewer, token)) {
+      throw new ApprovalAuthError(reviewer);
     }
 
     gated.reviewedBy = reviewer;
