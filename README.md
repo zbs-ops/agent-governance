@@ -185,5 +185,12 @@ Most agent stacks have an answer to neither. This is my answer.
 
 ---
 
+## How I build
+
+I work with an AI coding assistant as a pair programmer. I decide what gets built, review
+every change, and own what ships. Fitting, for a project about keeping agents accountable.
+
+---
+
 Built by **Zohaib Qamar** — [GitHub](https://github.com/zbs-ops) ·
 [LinkedIn](https://www.linkedin.com/in/zohaib-qamar-qwertyu/)
