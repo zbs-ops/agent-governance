@@ -1,5 +1,10 @@
 # Agent Governance
 
+> **Problem:** AI agents with tools will eventually refund the wrong customer or drop a table, and most stacks can't say who approved it.
+> **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
+> **Proof:** 81 tests, including a 22-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+
+
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
 
 A control plane that sits between AI agents and the things they can break.
