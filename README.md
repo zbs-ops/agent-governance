@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 81 tests, including a 22-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 90 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -73,7 +73,7 @@ reorder, or move into a database later without touching the engine.
 | 2 | Internal writes — tickets, CRM updates | Runs, recorded in full |
 | 3 | Money, customers, production, deletes | **Waits for a human** |
 
-Six rules override the tier entirely:
+Seven rules override the tier entirely:
 
 - **Malformed tool name** → refused before matching. Wildcards match by prefix, so a name
   like `search.x/../stripe.refund`, a newline-smuggled second tool, or a lookalike letter
@@ -88,6 +88,9 @@ Six rules override the tier entirely:
   amount, and the real amount is what gets charged.
 - **One unusually large spend** → escalated to a human even when it fits, because an agent
   asking for a quarter of the entire budget in a single action is worth a second look.
+- **A runaway loop** → after 10 unattended internal writes from one agent within a minute, the
+  next one waits for a person. Each ticket is harmless on its own; an agent stuck in a loop
+  creating hundreds of them is not. Reads are never slowed down.
 
 Two rules at approval time:
 
@@ -111,7 +114,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 81 tests (unit + eval)
+npm test         # 90 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -135,16 +138,16 @@ the hash chain are plain TypeScript, which is why they're easy to test and easy 
 ### Adversarial eval
 
 `evals/` asks a different question from the unit tests: when an agent is confused, careless,
-or probing, does the gate still give the safe answer? 22 scenarios across four categories
+or probing, does the gate still give the safe answer? 24 scenarios across four categories
 (baseline, tool spoofing, cost manipulation, budget pressure), each with the verdict a careful
 operator would want. `npm run eval` prints a scorecard and fails on any miss. CI runs it on
 every push, alongside typecheck, tests and a production build.
 
-Writing it found five spoofing holes in the first run (14/19); they're closed. Three more cost scenarios cover an agent understating its cost (22/22).
+Writing it found five spoofing holes in the first run (14/19); they're closed. Later scenarios cover an agent understating its cost and a runaway loop of writes (24/24).
 
 ### Tests
 
-81 tests, and they're aimed at the things that would actually hurt:
+90 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -161,6 +164,8 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. T
   action pending with nothing charged and nothing written to the ledger
 - an approval with no token, a forged token, or a token minted for a different proposal is
   refused; only a token bound to this proposal and this reviewer's key lets it through
+- the 11th unattended write from one agent in a minute waits for a person, other agents and
+  reads are unaffected, and writes flow again once the window passes
 
 ---
 

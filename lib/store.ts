@@ -1,6 +1,6 @@
 import { appendEntry, verifyChain } from './audit';
 import { verifyApprovalToken } from './approvals';
-import { evaluate, money } from './policy';
+import { UNATTENDED_WINDOW_MS, evaluate, money } from './policy';
 import type {
   ActionProposal,
   AuditEntry,
@@ -113,7 +113,9 @@ class MemoryStore implements Store {
       estimated: money(proposal.estimatedCostCents),
     });
 
-    const decision = evaluate(proposal, this.budgetState);
+    const decision = evaluate(proposal, this.budgetState, {
+      recentUnattendedWrites: this.recentUnattendedWrites(proposal.agent, Date.parse(proposal.createdAt)),
+    });
     this.record('POLICY_EVALUATED', 'policy-engine', proposal.id, {
       verdict: decision.verdict,
       tier: decision.tier,
@@ -173,6 +175,17 @@ class MemoryStore implements Store {
     this.record('APPROVED', reviewer, id, { note: note ?? null });
     this.execute(gated);
     return gated;
+  }
+
+  /** Tier-2 writes this agent ran without a human inside the rate-limit window. */
+  private recentUnattendedWrites(agent: string, now: number): number {
+    return this.gated.filter(
+      (g) =>
+        g.proposal.agent === agent &&
+        g.decision.verdict === 'ALLOW' &&
+        g.decision.tier === 2 &&
+        now - Date.parse(g.proposal.createdAt) < UNATTENDED_WINDOW_MS,
+    ).length;
   }
 
   verify(): ChainVerification {
