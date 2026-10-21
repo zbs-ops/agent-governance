@@ -71,8 +71,22 @@ function ruleFor(tool: string): PolicyRule | undefined {
   return POLICY.find((rule) => rule.match.some((pattern) => matches(pattern, tool)));
 }
 
+/**
+ * How many tier-2 writes one agent may run unattended inside the window before the next one
+ * waits for a person. A single write is routine; a loop creating hundreds of tickets is a
+ * runaway agent, and it's cheaper to pause it once than to clean up after it.
+ */
+export const UNATTENDED_WRITE_LIMIT = 10;
+export const UNATTENDED_WINDOW_MS = 60_000;
+
+/** What the gate knows about recent history. The store supplies it; the gate stays pure. */
+export interface History {
+  /** Tier-2 writes this agent has run unattended within the current window. */
+  recentUnattendedWrites?: number;
+}
+
 /** Hard stops that override the tier entirely. Order matters and is asserted in tests. */
-export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecision {
+export function evaluate(proposal: ActionProposal, budget: Budget, history: History = {}): PolicyDecision {
   const reasons: string[] = [];
 
   // 0. A tool name has to look like a tool name before it is matched against anything.
@@ -156,6 +170,15 @@ export function evaluate(proposal: ActionProposal, budget: Budget): PolicyDecisi
   }
 
   if (rule.tier === 2) {
+    // A runaway loop of individually harmless writes is still a runaway. Reads are never
+    // slowed down, because they can't change anything.
+    const recent = history.recentUnattendedWrites ?? 0;
+    if (recent >= UNATTENDED_WRITE_LIMIT) {
+      reasons.push(
+        `This agent has already run ${recent} unattended writes in the last ${UNATTENDED_WINDOW_MS / 1000}s (limit ${UNATTENDED_WRITE_LIMIT}), so the next one waits for a person.`,
+      );
+      return { verdict: 'REQUIRE_APPROVAL', tier: 2, reasons, decidedBy: 'unattended-rate', costCents: cost };
+    }
     reasons.push('Tier 2 runs unattended but is recorded in full.');
     return { verdict: 'ALLOW', tier: 2, reasons, decidedBy: rule.id, costCents: cost };
   }

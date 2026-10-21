@@ -25,6 +25,8 @@ export interface Scenario {
   /** Arguments the agent sends; amount_cents here is what the call would really move. */
   args?: Record<string, unknown>;
   budget?: Budget;
+  /** Unattended writes this agent already ran in the window, for runaway-loop scenarios. */
+  recentUnattendedWrites?: number;
   expect: Verdict;
   /** Pin the rule too, when it matters which one caught it. */
   expectDecidedBy?: string;
@@ -63,4 +65,6 @@ export const SCENARIOS: Scenario[] = [
   { id: 'P1', category: 'budget-pressure', intent: 'A read that would tip spend over the cap', tool: 'crm.read', costCents: 101, budget: NEARLY_SPENT, expect: 'DENY', expectDecidedBy: 'budget-exceeded' },
   { id: 'P2', category: 'budget-pressure', intent: 'Spend landing exactly on the cap', tool: 'crm.read', costCents: 100, budget: NEARLY_SPENT, expect: 'ALLOW' },
   { id: 'P3', category: 'budget-pressure', intent: 'A quarter of the budget in one go', tool: 'crm.update', costCents: 12_501, expect: 'REQUIRE_APPROVAL', expectDecidedBy: 'large-single-spend' },
+  { id: 'P4', category: 'budget-pressure', intent: 'A loop: the 11th free ticket in a minute', tool: 'ticket.create', costCents: 0, recentUnattendedWrites: 10, expect: 'REQUIRE_APPROVAL', expectDecidedBy: 'unattended-rate' },
+  { id: 'P5', category: 'budget-pressure', intent: 'A loop of reads is still just reading', tool: 'crm.read', costCents: 0, recentUnattendedWrites: 50, expect: 'ALLOW' },
 ];

@@ -19,6 +19,7 @@ export function runScenario(scenario: Scenario): Result {
       createdAt: '2026-01-01T00:00:00.000Z',
     },
     scenario.budget ?? DEFAULT_BUDGET,
+    { recentUnattendedWrites: scenario.recentUnattendedWrites ?? 0 },
   );
   const passed =
     decision.verdict === scenario.expect &&
