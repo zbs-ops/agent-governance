@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 90 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 94 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -92,7 +92,7 @@ Seven rules override the tier entirely:
   next one waits for a person. Each ticket is harmless on its own; an agent stuck in a loop
   creating hundreds of them is not. Reads are never slowed down.
 
-Two rules at approval time:
+Three rules at approval time:
 
 - **An agent can't approve its own proposal.** The agent that asked can withdraw it, but a
   yes has to come from someone else, or "who approved this?" has no honest answer.
@@ -102,6 +102,10 @@ Two rules at approval time:
   can't be replayed onto another. Rejection needs no token. The API answers a self-approval
   or a bad token with 403 and writes nothing. (The keys are in-memory for the demo; the shape
   is what a real per-user secret behind an identity provider would check.)
+- **The budget is checked again when the money moves.** An action that waits for a person can
+  wait a while, and other actions spend in the meantime. Two $300 refunds that each fit a $500
+  cap when proposed would both have gone through once approved. Now the second is blocked at
+  approval with the reason written down; the approval stays on the record, and nothing is charged.
 
 Two properties are enforced by tests rather than hoped for: the engine is **deterministic**
 (same proposal, same budget, same verdict, every time) and it **always explains itself**,
@@ -114,7 +118,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 90 tests (unit + eval)
+npm test         # 94 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -147,7 +151,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-90 tests, and they're aimed at the things that would actually hurt:
+94 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -164,6 +168,8 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   action pending with nothing charged and nothing written to the ledger
 - an approval with no token, a forged token, or a token minted for a different proposal is
   refused; only a token bound to this proposal and this reviewer's key lets it through
+- two pending refunds that each fit the budget can't both be approved past the cap; the late
+  one is blocked at approval, charged nothing, and the chain still verifies
 - the 11th unattended write from one agent in a minute waits for a person, other agents and
   reads are unaffected, and writes flow again once the window passes
 
