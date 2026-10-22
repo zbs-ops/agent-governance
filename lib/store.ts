@@ -173,6 +173,27 @@ class MemoryStore implements Store {
 
     gated.state = 'APPROVED';
     this.record('APPROVED', reviewer, id, { note: note ?? null });
+
+    // The cap was checked when this was proposed, but a tier-3 action can sit waiting while
+    // other actions spend. Two refunds that each fit on their own could both be approved and
+    // break the cap together. So check again at the moment the money would move. The
+    // approval stays on the record (the person did say yes); the action just doesn't run.
+    const projected = this.budgetState.spentCents + gated.decision.costCents;
+    if (projected > this.budgetState.limitCents) {
+      const why =
+        `Budget changed while this waited: ${money(gated.decision.costCents)} would bring spend to ` +
+        `${money(projected)}, over the ${money(this.budgetState.limitCents)} cap.`;
+      gated.state = 'BLOCKED';
+      gated.decision = {
+        ...gated.decision,
+        verdict: 'DENY',
+        reasons: [...gated.decision.reasons, why],
+        decidedBy: 'budget-exceeded-at-approval',
+      };
+      this.record('BLOCKED', 'policy-engine', id, { why });
+      return gated;
+    }
+
     this.execute(gated);
     return gated;
   }
