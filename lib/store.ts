@@ -1,6 +1,6 @@
 import { appendEntry, verifyChain } from './audit';
 import { verifyApprovalToken } from './approvals';
-import { UNATTENDED_WINDOW_MS, evaluate, money } from './policy';
+import { APPROVAL_TTL_MS, UNATTENDED_WINDOW_MS, evaluate, money } from './policy';
 import type {
   ActionProposal,
   AuditEntry,
@@ -160,6 +160,27 @@ class MemoryStore implements Store {
     // needs no token — withdrawing an action can't cause harm.
     if (approve && !verifyApprovalToken(id, reviewer, token)) {
       throw new ApprovalAuthError(reviewer);
+    }
+
+    // An approval only counts within a window of the request. Checked after the approver is
+    // authenticated, so a forged attempt can't change anything, and only for a yes: rejecting
+    // a stale request is how the queue gets cleared.
+    const waited = Date.now() - Date.parse(gated.proposal.createdAt);
+    if (approve && waited > APPROVAL_TTL_MS) {
+      const why =
+        `This request expired: it was made ${Math.floor(waited / 3_600_000)}h ago, and an approval only counts ` +
+        `within ${APPROVAL_TTL_MS / 3_600_000}h. Ask the agent to propose it again.`;
+      gated.reviewedBy = reviewer;
+      gated.reviewNote = note;
+      gated.state = 'BLOCKED';
+      gated.decision = {
+        ...gated.decision,
+        verdict: 'DENY',
+        reasons: [...gated.decision.reasons, why],
+        decidedBy: 'approval-expired',
+      };
+      this.record('BLOCKED', 'policy-engine', id, { why, reviewer });
+      return gated;
     }
 
     gated.reviewedBy = reviewer;

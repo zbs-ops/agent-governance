@@ -79,6 +79,13 @@ function ruleFor(tool: string): PolicyRule | undefined {
 export const UNATTENDED_WRITE_LIMIT = 10;
 export const UNATTENDED_WINDOW_MS = 60_000;
 
+/**
+ * How long a person's yes stays valid after an action was asked for. A refund approved days
+ * later, after the customer, the order and the reason have moved on, is approving a different
+ * situation from the one the agent described. Past this, the request has to be made again.
+ */
+export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
+
 /** What the gate knows about recent history. The store supplies it; the gate stays pure. */
 export interface History {
   /** Tier-2 writes this agent has run unattended within the current window. */
