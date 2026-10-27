@@ -286,6 +286,9 @@ export default function Dashboard() {
               <button onClick={tamper} disabled={busy}>
                 Tamper with it
               </button>
+              <button onClick={() => window.open('/api/audit?download')} disabled={busy}>
+                Download
+              </button>
             </span>
           </h2>
           <div className="body">
