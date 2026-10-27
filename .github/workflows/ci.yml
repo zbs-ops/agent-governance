@@ -19,3 +19,30 @@ jobs:
       - run: npm test
       - run: npm run eval
       - run: npm run build
+
+  # A second implementation checks this one: the Python agentguard (on PyPI) must verify the
+  # ledger this server writes, and must name the same entry when it's been tampered with.
+  ledger-interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: LEDGER_OUT="$RUNNER_TEMP/ledgers" npx vitest run lib/ledger-interop.test.ts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install agentguard-eval==0.3.2
+      - name: The clean ledger verifies
+        run: agentguard verify-ledger "$RUNNER_TEMP/ledgers/clean.json"
+      - name: The tampered ledger fails at entry 3
+        run: |
+          set +e
+          agentguard verify-ledger "$RUNNER_TEMP/ledgers/tampered.json" | tee out.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" = 1
+          grep -q "Entry #3 was edited" out.txt

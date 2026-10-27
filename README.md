@@ -59,6 +59,17 @@ The difference between *"we have logs"* and *"we can prove what happened"*.
 3. Pick **Refund $84.00** → it stops and waits for you. Approve it and watch the budget move.
 4. Hit **Verify chain** → all entries check out.
 5. Hit **Tamper with it**, then **Verify chain** again → it names the corrupted line.
+6. Don't trust the server's own verdict? Hit **Download** and check the file yourself with a
+   separate implementation, the Python one on PyPI:
+
+   ```bash
+   pip install agentguard-eval
+   agentguard verify-ledger agent-governance-ledger.json
+   # BROKEN: Entry #2 was edited after it was written. Its contents no longer match its hash.
+   ```
+
+   CI runs this on every change: the Python verifier must accept this server's ledger and
+   name the same broken entry when it's been tampered with.
 
 ---
 
