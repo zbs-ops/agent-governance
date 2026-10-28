@@ -17,7 +17,7 @@ const refund = (store: ReturnType<typeof resetStore>) =>
   store.propose({ agent: 'billing-agent', tool: 'refund.create', args: { customer: 'acme', amount_cents: 2_000 }, estimatedCostCents: 2_000 });
 
 const approve = (store: ReturnType<typeof resetStore>, id: string) =>
-  store.decide(id, true, REVIEWER, 'ok', mintApprovalToken(id, REVIEWER));
+  store.decide(id, true, REVIEWER, 'ok', mintApprovalToken(store.actions().find((a) => a.proposal.id === id)!.proposal, REVIEWER));
 
 describe('approvals expire', () => {
   beforeEach(() => {

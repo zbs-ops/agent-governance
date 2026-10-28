@@ -22,7 +22,7 @@ function refund(store: ReturnType<typeof resetStore>, cents: number) {
 }
 
 const approve = (store: ReturnType<typeof resetStore>, id: string) =>
-  store.decide(id, true, REVIEWER, 'ok', mintApprovalToken(id, REVIEWER));
+  store.decide(id, true, REVIEWER, 'ok', mintApprovalToken(store.actions().find((a) => a.proposal.id === id)!.proposal, REVIEWER));
 
 describe('approving after the budget has moved', () => {
   it('blocks the approval that would push spend past the cap, and charges nothing', () => {

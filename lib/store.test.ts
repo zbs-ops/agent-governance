@@ -4,7 +4,8 @@ import { mintApprovalToken } from './approvals';
 import { ApprovalAuthError, SelfApprovalError, resetStore } from './store';
 
 const HUMAN = 'you@company.com';
-const approve = (id: string) => mintApprovalToken(id, HUMAN);
+const approve = (store: ReturnType<typeof resetStore>, id: string) =>
+  mintApprovalToken(store.actions().find((a) => a.proposal.id === id)!.proposal, HUMAN);
 
 function pendingRefund() {
   const store = resetStore();
@@ -50,7 +51,7 @@ describe('who is allowed to approve', () => {
   it('lets a different, authenticated reviewer approve', () => {
     const { store, gated } = pendingRefund();
     const id = gated.proposal.id;
-    expect(store.decide(id, true, HUMAN, undefined, approve(id))?.state).toBe('EXECUTED');
+    expect(store.decide(id, true, HUMAN, undefined, approve(store, id))?.state).toBe('EXECUTED');
   });
 });
 
@@ -78,7 +79,7 @@ describe('authenticating the approver', () => {
       args: { invoice: '7003', amount_cents: 5_000 },
       estimatedCostCents: 5_000,
     });
-    const wrongProposalToken = mintApprovalToken(other.proposal.id, HUMAN);
+    const wrongProposalToken = mintApprovalToken(other.proposal, HUMAN);
     expect(() => store.decide(gated.proposal.id, true, HUMAN, undefined, wrongProposalToken)).toThrow(
       ApprovalAuthError,
     );
@@ -120,7 +121,7 @@ describe('what the store charges when an action runs', () => {
     expect(gated.state).toBe('PENDING_APPROVAL');
     expect(gated.decision.decidedBy).toBe('cost-understated');
 
-    store.decide(gated.proposal.id, true, HUMAN, undefined, approve(gated.proposal.id));
+    store.decide(gated.proposal.id, true, HUMAN, undefined, approve(store, gated.proposal.id));
     // $90.00 actually moved, so $90.00 comes off the budget, not the $1.00 the agent claimed.
     expect(store.budget().spentCents - before).toBe(9_000);
   });

@@ -26,7 +26,7 @@ describe.skipIf(!out)('ledger files for the cross-language check', () => {
       args: { customer: 'acme', amount_cents: 8_400 },
       estimatedCostCents: 8_400,
     });
-    store.decide(refund.proposal.id, true, REVIEWER, 'ok', mintApprovalToken(refund.proposal.id, REVIEWER));
+    store.decide(refund.proposal.id, true, REVIEWER, 'ok', mintApprovalToken(refund.proposal, REVIEWER));
     expect(store.verify().valid).toBe(true);
     writeFileSync(join(dir, 'clean.json'), JSON.stringify({ entries: store.chain() }));
 

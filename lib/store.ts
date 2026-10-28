@@ -158,7 +158,7 @@ class MemoryStore implements Store {
     // reviewer was still only a name: an agent could type a human's. An approval must now
     // carry a token only that reviewer's key can produce, bound to this proposal. Rejection
     // needs no token — withdrawing an action can't cause harm.
-    if (approve && !verifyApprovalToken(id, reviewer, token)) {
+    if (approve && !verifyApprovalToken(gated.proposal, reviewer, token)) {
       throw new ApprovalAuthError(reviewer);
     }
 
