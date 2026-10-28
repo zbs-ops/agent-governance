@@ -1,4 +1,6 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+
+import type { ActionProposal } from './types';
 
 /**
  * Who is allowed to approve, and the secret that proves it.
@@ -51,6 +53,25 @@ export function verifyApprovalToken(
   const b = Buffer.from(token);
   // timingSafeEqual needs equal-length buffers, and a length mismatch is already a no-match.
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** JSON with object keys sorted at every level, so the same proposal always hashes the same. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** A fingerprint of everything an approval is an approval OF. */
+export function proposalDigest(p: ActionProposal): string {
+  const { id, agent, tool, args, estimatedCostCents, createdAt } = p;
+  return createHash('sha256').update(canonical({ id, agent, tool, args, estimatedCostCents, createdAt })).digest('hex');
 }
 
 function sign(proposalId: string, reviewer: string, key: string): string {
