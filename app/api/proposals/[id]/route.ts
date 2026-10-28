@@ -25,15 +25,17 @@ export async function POST(
   const reviewer = body.reviewer ?? DASHBOARD_REVIEWER;
   // The dashboard is the trusted human surface, so the server mints its reviewer's token.
   // Every other caller must supply its own; an unregistered reviewer gets none and is refused.
+  const store = getStore();
+  const pending = store.actions().find((a) => a.proposal.id === id);
   const token =
     body.token ??
-    (reviewer === DASHBOARD_REVIEWER && isRegisteredReviewer(reviewer)
-      ? mintApprovalToken(id, reviewer)
+    (pending && reviewer === DASHBOARD_REVIEWER && isRegisteredReviewer(reviewer)
+      ? mintApprovalToken(pending.proposal, reviewer)
       : undefined);
 
   let updated;
   try {
-    updated = getStore().decide(id, body.approve === true, reviewer, body.note, token);
+    updated = store.decide(id, body.approve === true, reviewer, body.note, token);
   } catch (err) {
     if (err instanceof SelfApprovalError || err instanceof ApprovalAuthError) {
       return NextResponse.json({ error: err.message }, { status: 403 });

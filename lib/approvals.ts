@@ -28,27 +28,31 @@ export function isRegisteredReviewer(reviewer: string): boolean {
 
 /**
  * Mint an approval token for a reviewer who holds a key. Throws for an unknown reviewer,
- * so an agent can't obtain a token for a name it doesn't have the key for. The token binds
- * the reviewer to the specific proposal, so it can't be replayed onto a different action.
+ * so an agent can't obtain a token for a name it doesn't have the key for.
+ *
+ * The token is bound to the reviewer and to WHAT is being approved: the id, agent, tool,
+ * arguments, estimate and request time. Binding to the id alone wasn't enough, because ids
+ * are a counter that restarts on every reset, so a token for one act_0001 used to approve
+ * any later act_0001.
  */
-export function mintApprovalToken(proposalId: string, reviewer: string): string {
+export function mintApprovalToken(proposal: ActionProposal, reviewer: string): string {
   const key = REVIEWER_KEYS[normalize(reviewer)];
   if (key === undefined) {
     throw new Error(`"${reviewer}" is not a registered reviewer.`);
   }
-  return sign(proposalId, normalize(reviewer), key);
+  return sign(proposal, normalize(reviewer), key);
 }
 
-/** True only if `token` was minted for this exact reviewer and proposal by the key holder. */
+/** True only if `token` was minted by the key holder for this reviewer and this exact proposal. */
 export function verifyApprovalToken(
-  proposalId: string,
+  proposal: ActionProposal,
   reviewer: string,
   token: string | undefined,
 ): boolean {
   if (token === undefined) return false;
   const key = REVIEWER_KEYS[normalize(reviewer)];
   if (key === undefined) return false;
-  const expected = sign(proposalId, normalize(reviewer), key);
+  const expected = sign(proposal, normalize(reviewer), key);
   const a = Buffer.from(expected);
   const b = Buffer.from(token);
   // timingSafeEqual needs equal-length buffers, and a length mismatch is already a no-match.
@@ -74,6 +78,6 @@ export function proposalDigest(p: ActionProposal): string {
   return createHash('sha256').update(canonical({ id, agent, tool, args, estimatedCostCents, createdAt })).digest('hex');
 }
 
-function sign(proposalId: string, reviewer: string, key: string): string {
-  return createHmac('sha256', key).update(`${proposalId}:${reviewer}`).digest('hex');
+function sign(proposal: ActionProposal, reviewer: string, key: string): string {
+  return createHmac('sha256', key).update(`${proposal.id}:${proposalDigest(proposal)}:${reviewer}`).digest('hex');
 }
