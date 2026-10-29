@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 112 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 117 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -107,14 +107,16 @@ Four rules at approval time:
 
 - **An agent can't approve its own proposal.** The agent that asked can withdraw it, but a
   yes has to come from someone else, or "who approved this?" has no honest answer.
-- **An approval has to be authenticated.** The reviewer isn't just a name any more: an
+- **A decision has to be authenticated.** The reviewer isn't just a name any more: an
   approval must carry a token only that reviewer's key can produce, bound to the specific
   proposal. So an agent can't approve by typing a human's name, and a token for one action
   can't be replayed onto another. "Bound to the proposal" means its contents (agent, tool,
   arguments, estimate, request time), not just its number: ids restart after a reset, and a
   token that only covered `act_0001` once approved a $450 refund it was never issued for.
-  Rejection needs no token. The API answers a self-approval or a bad token with 403 and
-  writes nothing. (The keys are in-memory for the demo; the shape
+  A rejection takes the reviewer's token too: otherwise anyone could cancel a pending action
+  and the ledger would record a person's name against a decision they never made. Only the
+  agent that asked can withdraw its own request without one. The API answers a self-approval
+  or a bad token with 403 and writes nothing. (The keys are in-memory for the demo; the shape
   is what a real per-user secret behind an identity provider would check.)
 - **The budget is checked again when the money moves.** An action that waits for a person can
   wait a while, and other actions spend in the meantime. Two $300 refunds that each fit a $500
@@ -136,7 +138,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 112 tests (unit + eval)
+npm test         # 117 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -169,7 +171,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-112 tests, and they're aimed at the things that would actually hurt:
+117 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -186,6 +188,9 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   action pending with nothing charged and nothing written to the ledger
 - an approval with no token, a forged token, or a token minted for a different proposal is
   refused; only a token bound to this proposal and this reviewer's key lets it through
+- a rejection in a person's name without their token is refused and writes nothing, so the
+  ledger can't be made to blame someone for a decision they never made; the agent that asked can
+  still withdraw its own request
 - a token minted for one `act_0001` is refused for a different `act_0001` after a reset, and for
   any change to the amount, customer, arguments, tool, agent, estimate or request time
 - two pending refunds that each fit the budget can't both be approved past the cap; the late
