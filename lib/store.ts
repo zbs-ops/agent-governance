@@ -52,10 +52,10 @@ export class SelfApprovalError extends Error {
   }
 }
 
-/** Raised when an approval arrives without a valid token for the named reviewer. */
+/** Raised when a decision arrives without a valid token for the named reviewer. */
 export class ApprovalAuthError extends Error {
   constructor(reviewer: string) {
-    super(`"${reviewer}" did not present a valid approval token.`);
+    super(`"${reviewer}" did not present a valid token for this decision.`);
     this.name = 'ApprovalAuthError';
   }
 }
@@ -154,11 +154,14 @@ class MemoryStore implements Store {
       throw new SelfApprovalError(gated.proposal.agent);
     }
 
-    // Authenticate the approver. PR #4 kept an agent from approving as itself, but the
-    // reviewer was still only a name: an agent could type a human's. An approval must now
-    // carry a token only that reviewer's key can produce, bound to this proposal. Rejection
-    // needs no token — withdrawing an action can't cause harm.
-    if (approve && !verifyApprovalToken(gated.proposal, reviewer, token)) {
+    // Authenticate the reviewer. PR #4 kept an agent from approving as itself, but the
+    // reviewer was still only a name: an agent could type a human's. A decision must carry a
+    // token only that reviewer's key can produce, bound to this proposal. That goes for a
+    // rejection too: without it, anyone could cancel any pending action and the ledger would
+    // record a person's name against a decision they never made. The one exception is the
+    // agent that asked, withdrawing its own request.
+    const withdrawing = !approve && sameActor(reviewer, gated.proposal.agent);
+    if (!withdrawing && !verifyApprovalToken(gated.proposal, reviewer, token)) {
       throw new ApprovalAuthError(reviewer);
     }
 

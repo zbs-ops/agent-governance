@@ -62,7 +62,8 @@ describe('approvals expire', () => {
     const store = resetStore();
     const action = refund(store);
     vi.setSystemTime(new Date(T0.getTime() + APPROVAL_TTL_MS * 3));
-    expect(store.decide(action.proposal.id, false, REVIEWER, 'too old')?.state).toBe('REJECTED');
+    const token = mintApprovalToken(action.proposal, REVIEWER);
+    expect(store.decide(action.proposal.id, false, REVIEWER, 'too old', token)?.state).toBe('REJECTED');
   });
 
   it('checks who is approving before it checks the clock', () => {
