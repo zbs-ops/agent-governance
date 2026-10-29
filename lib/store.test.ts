@@ -101,9 +101,12 @@ describe('authenticating the approver', () => {
     expect(store.chain().length).toBe(ledgerBefore);
   });
 
-  it('needs no token to reject', () => {
+  it("needs the reviewer's token to reject in their name (see reject-auth.test.ts)", () => {
     const { store, gated } = pendingRefund();
-    expect(store.decide(gated.proposal.id, false, HUMAN)?.state).toBe('REJECTED');
+    expect(() => store.decide(gated.proposal.id, false, HUMAN)).toThrow(ApprovalAuthError);
+    expect(store.decide(gated.proposal.id, false, HUMAN, undefined, approve(store, gated.proposal.id))?.state).toBe(
+      'REJECTED',
+    );
   });
 });
 
