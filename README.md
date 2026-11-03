@@ -232,8 +232,15 @@ Most agent stacks have an answer to neither. This is my answer.
 
 ## How I build
 
-I work with an AI coding assistant as a pair programmer. I decide what gets built, review
-every change, and own what ships. Fitting, for a project about keeping agents accountable.
+The first version, from August 2026, came before Friday. Since October, changes have been built by Friday, an AI agent I run. Friday writes the code and the tests on its own cloud machine, opens each change as a pull request, and merges it when typecheck, tests, the adversarial eval and the production build pass, with Vercel's preview checked. For each change I get a plain-language write-up of what it fixes and how it was checked.
+
+**Problems hit, and the fixes:**
+
+- **Five spoofing holes.** Writing the adversarial eval found five tool-spoofing holes on its first run (14 of 19 passed). They're closed, and the eval runs on every push (24 of 24).
+- **An approval token could approve the wrong action.** A token was bound to the action's id, so it carried over to a different action with the same id. Tokens are now bound to a digest of the proposal itself.
+- **A dependency with a known vulnerability.** The Next.js version the demo first shipped on had a published advisory, so it was pinned to a fixed release on day one.
+
+Fitting, for a project about keeping agents accountable.
 
 ---
 
