@@ -67,8 +67,21 @@ function matches(pattern: string, tool: string): boolean {
   return pattern === tool;
 }
 
-function ruleFor(tool: string): PolicyRule | undefined {
-  return POLICY.find((rule) => rule.match.some((pattern) => matches(pattern, tool)));
+/**
+ * The rule that governs a tool. When more than one rule matches (a namespace wildcard and a
+ * stricter exact rule, say), the STRICTEST one wins, never the first one listed. A gate that
+ * fails closed can't let the order of a config file decide whether a delete is tier 1 or tier 3:
+ * a broad `data.*` read rule placed above an exact `data.delete` rule must not down-classify it.
+ * Among rules of the same tier the first keeps its describe, so the text stays stable.
+ */
+export function classify(tool: string, policy: PolicyRule[] = POLICY): PolicyRule | undefined {
+  let chosen: PolicyRule | undefined;
+  for (const rule of policy) {
+    if (rule.match.some((pattern) => matches(pattern, tool)) && (chosen === undefined || rule.tier > chosen.tier)) {
+      chosen = rule;
+    }
+  }
+  return chosen;
 }
 
 /**
@@ -112,7 +125,7 @@ export function evaluate(proposal: ActionProposal, budget: Budget, history: Hist
 
   // 1. Unknown tools fail closed. An agent that invents a tool name is either
   //    hallucinating or probing, and neither deserves the benefit of the doubt.
-  const rule = ruleFor(proposal.tool);
+  const rule = classify(proposal.tool);
   if (!rule) {
     return {
       verdict: 'DENY',
