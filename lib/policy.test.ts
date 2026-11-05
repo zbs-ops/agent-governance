@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluate } from './policy';
+import { POLICY, classify, evaluate, type PolicyRule } from './policy';
 import type { ActionProposal, Budget } from './types';
 
 const BUDGET: Budget = { spentCents: 0, limitCents: 50_000 };
@@ -124,5 +124,43 @@ describe('cost estimates the gate cannot trust', () => {
 
   it('still lets a zero-cost read through', () => {
     expect(evaluate(proposal('crm.read', 0), BUDGET).verdict).toBe('ALLOW');
+  });
+});
+
+describe('the strictest matching rule wins, never the first listed', () => {
+  // A gate that fails closed must not let the order of a config file decide a tool's tier.
+  const broadFirst: PolicyRule[] = [
+    { id: 'reads', describe: 'reads run unattended', tier: 1, match: ['data.*'] },
+    { id: 'danger', describe: 'deletes wait for a human', tier: 3, match: ['data.delete'] },
+  ];
+
+  it('does not down-classify a strict tool sitting under a broad read wildcard', () => {
+    expect(classify('data.delete', broadFirst)?.tier).toBe(3);
+  });
+
+  it('gives the same answer whichever order the rules are written in', () => {
+    const reversed = [...broadFirst].reverse();
+    expect(classify('data.delete', reversed)?.tier).toBe(3);
+    expect(classify('data.delete', broadFirst)?.tier).toBe(3);
+  });
+
+  it('still classifies a tool that only matches the broad rule at the broad tier', () => {
+    expect(classify('data.read', broadFirst)?.tier).toBe(1);
+  });
+
+  it('keeps the shipped policy unambiguous: no tool is two different tiers', () => {
+    // Every exact tool and a sample under each wildcard resolves to exactly one tier.
+    const tools = [
+      'crm.read', 'db.query', 'search.web', 'calendar.read',
+      'crm.update', 'ticket.create', 'notify.internal', 'db.insert',
+      'stripe.refund', 'payout.create', 'invoice.void', 'refund.issue',
+      'email.send', 'sms.send', 'whatsapp.send',
+      'db.delete', 'db.drop', 'deploy.production', 's3.delete',
+    ];
+    for (const tool of tools) {
+      const all = POLICY.filter((r) => r.match.some((p) => (p.endsWith('*') ? tool.startsWith(p.slice(0, -1)) : p === tool)));
+      const tiers = new Set(all.map((r) => r.tier));
+      expect(tiers.size, `${tool} matches tiers ${[...tiers]}`).toBeLessThanOrEqual(1);
+    }
   });
 });
