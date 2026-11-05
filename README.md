@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 117 tests, including a 24-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 121 tests, including a 25-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -36,7 +36,9 @@ Refunds, customer emails, deploys and deletes stop and wait.
 An agent asking for a tool that isn't on the list gets refused — no fuzzy matching, no
 benefit of the doubt. An agent inventing a tool name is either hallucinating or probing,
 and both deserve the same answer. Budget is checked before anything else, because a
-runaway agent is the failure that costs real money while everyone is asleep.
+runaway agent is the failure that costs real money while everyone is asleep. When a tool
+matches more than one rule, the strictest tier wins, so no ordering of the policy file can
+quietly down-classify a delete to a read.
 
 **3. The log can't be quietly rewritten.**
 Every event is hashed together with the hash of the event before it. Change one field in
@@ -138,7 +140,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 117 tests (unit + eval)
+npm test         # 121 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -171,7 +173,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-117 tests, and they're aimed at the things that would actually hurt:
+121 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
