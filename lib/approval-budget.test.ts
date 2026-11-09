@@ -12,11 +12,14 @@ import { resetStore } from './store';
 
 const REVIEWER = 'you@company.com';
 
+// Each refund is for a different order, so none is a repeat of another (see duplicate-proposal.test.ts).
+let order = 0;
 function refund(store: ReturnType<typeof resetStore>, cents: number) {
+  order += 1;
   return store.propose({
     agent: 'billing-agent',
     tool: 'refund.create',
-    args: { customer: 'acme', amount_cents: cents },
+    args: { customer: 'acme', amount_cents: cents, order: `R-${order}` },
     estimatedCostCents: cents,
   });
 }
