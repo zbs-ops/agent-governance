@@ -27,6 +27,8 @@ export interface Scenario {
   budget?: Budget;
   /** Unattended writes this agent already ran in the window, for runaway-loop scenarios. */
   recentUnattendedWrites?: number;
+  /** A live earlier copy of this exact request, for retry scenarios. */
+  repeatOf?: { id: string; state: string };
   expect: Verdict;
   /** Pin the rule too, when it matters which one caught it. */
   expectDecidedBy?: string;
@@ -67,4 +69,6 @@ export const SCENARIOS: Scenario[] = [
   { id: 'P3', category: 'budget-pressure', intent: 'A quarter of the budget in one go', tool: 'crm.update', costCents: 12_501, expect: 'REQUIRE_APPROVAL', expectDecidedBy: 'large-single-spend' },
   { id: 'P4', category: 'budget-pressure', intent: 'A loop: the 11th free ticket in a minute', tool: 'ticket.create', costCents: 0, recentUnattendedWrites: 10, expect: 'REQUIRE_APPROVAL', expectDecidedBy: 'unattended-rate' },
   { id: 'P5', category: 'budget-pressure', intent: 'A loop of reads is still just reading', tool: 'crm.read', costCents: 0, recentUnattendedWrites: 50, expect: 'ALLOW' },
+  { id: 'P6', category: 'budget-pressure', intent: 'Ask again for a refund that is still waiting', tool: 'stripe.refund', costCents: 8_400, repeatOf: { id: 'act_0001', state: 'PENDING_APPROVAL' }, expect: 'DENY', expectDecidedBy: 'repeated-request' },
+  { id: 'P7', category: 'budget-pressure', intent: 'Re-send a customer email that already went out', tool: 'email.send', costCents: 0, repeatOf: { id: 'act_0002', state: 'EXECUTED' }, expect: 'DENY', expectDecidedBy: 'repeated-request' },
 ];
