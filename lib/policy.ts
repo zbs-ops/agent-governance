@@ -103,6 +103,11 @@ export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 export interface History {
   /** Tier-2 writes this agent has run unattended within the current window. */
   recentUnattendedWrites?: number;
+  /**
+   * An earlier request with the same agent, tool and arguments that is still waiting, was
+   * approved, or already ran within the approval window: its id and state.
+   */
+  repeatOf?: { id: string; state: string };
 }
 
 /** Hard stops that override the tier entirely. Order matters and is asserted in tests. */
@@ -165,6 +170,19 @@ export function evaluate(proposal: ActionProposal, budget: Budget, history: Hist
       `This would put spend at ${money(projected)} against a ${money(budget.limitCents)} cap.`,
     );
     return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'budget-exceeded', costCents: cost };
+  }
+
+  // 3b. An agent that timed out waiting for an answer often just asks again. If the same
+  //     action is already waiting, or already went through, a second copy would pay or
+  //     contact the customer twice once both are approved. Only actions that move money or
+  //     are tier 3 are refused; asking again after a rejection or expiry is fine, because
+  //     the store only reports copies that are still live.
+  if (history.repeatOf && (rule.tier === 3 || cost > 0)) {
+    const was = history.repeatOf.state === 'PENDING_APPROVAL' ? 'is still waiting for a person' : 'already went through';
+    reasons.push(
+      `The same request (${history.repeatOf.id}) ${was}. A repeat would do it twice; to really do it again, change the arguments (for example a new request id).`,
+    );
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'repeated-request', costCents: cost };
   }
 
   // 4. An agent that says one number and asks to move a bigger one has told the gate
