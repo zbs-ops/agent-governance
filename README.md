@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 121 tests, including a 25-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 132 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -86,7 +86,7 @@ reorder, or move into a database later without touching the engine.
 | 2 | Internal writes — tickets, CRM updates | Runs, recorded in full |
 | 3 | Money, customers, production, deletes | **Waits for a human** |
 
-Seven rules override the tier entirely:
+Eight rules override the tier entirely:
 
 - **Malformed tool name** → refused before matching. Wildcards match by prefix, so a name
   like `search.x/../stripe.refund`, a newline-smuggled second tool, or a lookalike letter
@@ -101,6 +101,11 @@ Seven rules override the tier entirely:
   amount, and the real amount is what gets charged.
 - **One unusually large spend** → escalated to a human even when it fits, because an agent
   asking for a quarter of the entire budget in a single action is worth a second look.
+- **The same request twice** → refused while the first copy is still waiting, approved or
+  done (within the 24-hour approval window), for anything that moves money or is tier 3. An
+  agent that times out waiting for an answer often just asks again; without this, a person
+  approving both would pay the same refund twice. A request that was rejected or expired can
+  be asked for again, and a genuinely different one (another order id) isn't a repeat.
 - **A runaway loop** → after 10 unattended internal writes from one agent within a minute, the
   next one waits for a person. Each ticket is harmless on its own; an agent stuck in a loop
   creating hundreds of them is not. Reads are never slowed down.
@@ -140,7 +145,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 121 tests (unit + eval)
+npm test         # 132 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -173,7 +178,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-121 tests, and they're aimed at the things that would actually hurt:
+132 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -195,6 +200,9 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   still withdraw its own request
 - a token minted for one `act_0001` is refused for a different `act_0001` after a reset, and for
   any change to the amount, customer, arguments, tool, agent, estimate or request time
+- the same refund asked for twice is paid once: the repeat is refused while the first waits or
+  after it ran, the reason names the first request, argument order doesn't matter, and asking
+  again after a rejection still works
 - two pending refunds that each fit the budget can't both be approved past the cap; the late
   one is blocked at approval, charged nothing, and the chain still verifies
 - an approval that arrives more than 24 hours after the request is blocked and charges nothing;
