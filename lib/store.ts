@@ -1,5 +1,5 @@
 import { appendEntry, verifyChain } from './audit';
-import { verifyApprovalToken } from './approvals';
+import { canonical, verifyApprovalToken } from './approvals';
 import { APPROVAL_TTL_MS, UNATTENDED_WINDOW_MS, evaluate, money } from './policy';
 import type {
   ActionProposal,
@@ -115,6 +115,7 @@ class MemoryStore implements Store {
 
     const decision = evaluate(proposal, this.budgetState, {
       recentUnattendedWrites: this.recentUnattendedWrites(proposal.agent, Date.parse(proposal.createdAt)),
+      repeatOf: this.liveCopy(proposal),
     });
     this.record('POLICY_EVALUATED', 'policy-engine', proposal.id, {
       verdict: decision.verdict,
@@ -223,6 +224,21 @@ class MemoryStore implements Store {
   }
 
   /** Tier-2 writes this agent ran without a human inside the rate-limit window. */
+  /** An earlier request for exactly this action that is still live: waiting, approved, or
+   * already run, within the approval window. Rejected, blocked and expired ones don't count. */
+  private liveCopy(p: ActionProposal): { id: string; state: string } | undefined {
+    const now = Date.parse(p.createdAt);
+    const key = canonical({ agent: p.agent, tool: p.tool, args: p.args });
+    const live = new Set(['PENDING_APPROVAL', 'APPROVED', 'EXECUTED', 'AUTO_ALLOWED']);
+    const hit = this.gated.find(
+      (g) =>
+        live.has(g.state) &&
+        now - Date.parse(g.proposal.createdAt) < APPROVAL_TTL_MS &&
+        canonical({ agent: g.proposal.agent, tool: g.proposal.tool, args: g.proposal.args }) === key,
+    );
+    return hit && { id: hit.proposal.id, state: hit.state };
+  }
+
   private recentUnattendedWrites(agent: string, now: number): number {
     return this.gated.filter(
       (g) =>
