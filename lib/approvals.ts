@@ -60,7 +60,7 @@ export function verifyApprovalToken(
 }
 
 /** JSON with object keys sorted at every level, so the same proposal always hashes the same. */
-function canonical(value: unknown): string {
+export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value !== null && typeof value === 'object') {
     const obj = value as Record<string, unknown>;
