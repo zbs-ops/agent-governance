@@ -28,6 +28,13 @@ const SCENARIOS: { label: string; agent: string; tool: string; args: Record<stri
       cost: 8400,
     },
     {
+      label: 'Refund $300.00 (needs two people)',
+      agent: 'billing-agent',
+      tool: 'refund.issue',
+      args: { invoice: '9120', amount_cents: 30000 },
+      cost: 30000,
+    },
+    {
       label: 'Email 5,000 customers',
       agent: 'growth-agent',
       tool: 'email.send',
@@ -247,7 +254,11 @@ export default function Dashboard() {
                 <div className="row" style={{ marginTop: 10, justifyContent: 'space-between' }}>
                   <span className="state">
                     {a.state.replace(/_/g, ' ').toLowerCase()}
-                    {a.reviewedBy ? ` · ${a.reviewedBy}` : ''}
+                    {a.approvals?.length
+                      ? ` · approved ${a.approvals.length} of 2 (${a.approvals.join(', ')})`
+                      : a.reviewedBy
+                        ? ` · ${a.reviewedBy}`
+                        : ''}
                     {a.proposal.estimatedCostCents > 0
                       ? ` · ${money(a.proposal.estimatedCostCents)}`
                       : ''}
@@ -257,7 +268,12 @@ export default function Dashboard() {
                       <button
                         className="approve"
                         onClick={() => decide(a.proposal.id, true)}
-                        disabled={busy}
+                        disabled={busy || a.approvals?.includes('you@company.com')}
+                        title={
+                          a.approvals?.includes('you@company.com')
+                            ? 'You approved this. It needs a second, different person.'
+                            : undefined
+                        }
                       >
                         Approve
                       </button>
