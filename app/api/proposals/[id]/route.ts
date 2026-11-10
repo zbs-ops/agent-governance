@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { isRegisteredReviewer, mintApprovalToken } from '@/lib/approvals';
-import { ApprovalAuthError, SelfApprovalError, getStore } from '@/lib/store';
+import { ApprovalAuthError, SameApproverError, SelfApprovalError, getStore } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +39,9 @@ export async function POST(
   } catch (err) {
     if (err instanceof SelfApprovalError || err instanceof ApprovalAuthError) {
       return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    if (err instanceof SameApproverError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
     }
     throw err;
   }
