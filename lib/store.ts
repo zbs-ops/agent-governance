@@ -1,6 +1,6 @@
 import { appendEntry, verifyChain } from './audit';
 import { canonical, verifyApprovalToken } from './approvals';
-import { APPROVAL_TTL_MS, UNATTENDED_WINDOW_MS, evaluate, money } from './policy';
+import { APPROVAL_TTL_MS, UNATTENDED_WINDOW_MS, approvalsRequired, evaluate, money } from './policy';
 import type {
   ActionProposal,
   AuditEntry,
@@ -57,6 +57,14 @@ export class ApprovalAuthError extends Error {
   constructor(reviewer: string) {
     super(`"${reviewer}" did not present a valid token for this decision.`);
     this.name = 'ApprovalAuthError';
+  }
+}
+
+/** Raised when the reviewer who gave the first of two required approvals tries to give the second. */
+export class SameApproverError extends Error {
+  constructor(reviewer: string) {
+    super(`"${reviewer}" already approved this. It needs a second, different person.`);
+    this.name = 'SameApproverError';
   }
 }
 
@@ -166,6 +174,14 @@ class MemoryStore implements Store {
       throw new ApprovalAuthError(reviewer);
     }
 
+    // A large action needs two different people. The second yes has to come from someone
+    // else; refusing a repeat here, before anything is written, means one reviewer clicking
+    // twice changes nothing.
+    const twoPerson = approve && approvalsRequired(gated.decision) === 2;
+    if (twoPerson && (gated.approvals ?? []).some((r) => sameActor(r, reviewer))) {
+      throw new SameApproverError(reviewer);
+    }
+
     // An approval only counts within a window of the request. Checked after the approver is
     // authenticated, so a forged attempt can't change anything, and only for a yes: rejecting
     // a stale request is how the queue gets cleared.
@@ -196,8 +212,20 @@ class MemoryStore implements Store {
       return gated;
     }
 
-    gated.state = 'APPROVED';
-    this.record('APPROVED', reviewer, id, { note: note ?? null });
+    if (twoPerson) {
+      gated.approvals = [...(gated.approvals ?? []), reviewer];
+      const approval = `${gated.approvals.length} of 2`;
+      if (gated.approvals.length < 2) {
+        // The first yes is on the record, but the action keeps waiting for a second person.
+        this.record('APPROVED', reviewer, id, { note: note ?? null, approval });
+        return gated;
+      }
+      gated.state = 'APPROVED';
+      this.record('APPROVED', reviewer, id, { note: note ?? null, approval });
+    } else {
+      gated.state = 'APPROVED';
+      this.record('APPROVED', reviewer, id, { note: note ?? null });
+    }
 
     // The cap was checked when this was proposed, but a tier-3 action can sit waiting while
     // other actions spend. Two refunds that each fit on their own could both be approved and

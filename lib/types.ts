@@ -45,6 +45,8 @@ export interface GatedAction {
   /** Who approved or rejected it, if a human did. */
   reviewedBy?: string;
   reviewNote?: string;
+  /** Reviewers who have said yes so far, on an action that needs two of them. */
+  approvals?: string[];
 }
 
 /** One immutable line in the ledger. */
