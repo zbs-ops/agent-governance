@@ -99,6 +99,19 @@ export const UNATTENDED_WINDOW_MS = 60_000;
  */
 export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Above this amount one person's yes isn't enough: two different reviewers have to approve
+ * before the action runs. One careless, tricked or compromised reviewer could otherwise move up
+ * to the whole budget in a click. It's the real amount the gate charges, not the agent's
+ * estimate, so understating a refund doesn't skip the second person.
+ */
+export const TWO_PERSON_ABOVE_CENTS = 25_000;
+
+/** How many different people must approve an action the gate sent for review. */
+export function approvalsRequired(decision: PolicyDecision): 1 | 2 {
+  return decision.costCents > TWO_PERSON_ABOVE_CENTS ? 2 : 1;
+}
+
 /** What the gate knows about recent history. The store supplies it; the gate stays pure. */
 export interface History {
   /** Tier-2 writes this agent has run unattended within the current window. */
