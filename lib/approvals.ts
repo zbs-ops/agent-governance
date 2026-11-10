@@ -15,6 +15,8 @@ import type { ActionProposal } from './types';
  */
 const REVIEWER_KEYS: Record<string, string> = {
   'you@company.com': 'demo-human-reviewer-key',
+  // A second person, for actions large enough to need two approvals.
+  'finance@company.com': 'demo-finance-reviewer-key',
 };
 
 /** Normalized so a stray capital or space can't change who a token is checked against. */
