@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 132 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 143 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -110,7 +110,7 @@ Eight rules override the tier entirely:
   next one waits for a person. Each ticket is harmless on its own; an agent stuck in a loop
   creating hundreds of them is not. Reads are never slowed down.
 
-Four rules at approval time:
+Five rules at approval time:
 
 - **An agent can't approve its own proposal.** The agent that asked can withdraw it, but a
   yes has to come from someone else, or "who approved this?" has no honest answer.
@@ -133,6 +133,14 @@ Four rules at approval time:
   days later, after the customer and the reason have moved on, is approving a different
   situation; the late yes is blocked with the reason logged, and the agent has to ask again.
   Rejecting a stale request still works, so the queue can be cleared.
+- **Two people for a large action.** Above $250, one yes isn't enough: two different
+  reviewers have to approve before it runs. One careless, tricked or compromised reviewer could
+  otherwise move up to the whole budget in a click. It's the real amount the gate charges, so
+  understating the estimate doesn't skip the second person. The first yes is logged as
+  `1 of 2` and the action keeps waiting; the same reviewer approving again gets a 409 and
+  changes nothing; either reviewer can still reject. The budget and the 24-hour window are
+  checked again at the second yes. The dashboard acts as `you@company.com`, so the second
+  approval comes from `finance@company.com` with its own token, through the API.
 
 Two properties are enforced by tests rather than hoped for: the engine is **deterministic**
 (same proposal, same budget, same verdict, every time) and it **always explains itself**,
@@ -145,7 +153,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 132 tests (unit + eval)
+npm test         # 143 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -178,7 +186,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-132 tests, and they're aimed at the things that would actually hurt:
+143 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -205,6 +213,10 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   again after a rejection still works
 - two pending refunds that each fit the budget can't both be approved past the cap; the late
   one is blocked at approval, charged nothing, and the chain still verifies
+- a $300 refund doesn't run on one approval and runs on a second from a different reviewer;
+  the same reviewer twice (any capitalisation) is refused and writes nothing; $250 and under
+  still need one; an understated estimate doesn't avoid the second person; the budget and the
+  approval window are re-checked at the second yes; both approvals are in the ledger
 - an approval that arrives more than 24 hours after the request is blocked and charges nothing;
   one at exactly 24 hours still runs, and a forged late approval changes nothing
 - the 11th unattended write from one agent in a minute waits for a person, other agents and
