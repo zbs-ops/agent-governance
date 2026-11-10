@@ -24,8 +24,17 @@ function refund(store: ReturnType<typeof resetStore>, cents: number) {
   });
 }
 
-const approve = (store: ReturnType<typeof resetStore>, id: string) =>
-  store.decide(id, true, REVIEWER, 'ok', mintApprovalToken(store.actions().find((a) => a.proposal.id === id)!.proposal, REVIEWER));
+const SECOND = 'finance@company.com';
+
+const decideAs = (store: ReturnType<typeof resetStore>, id: string, who: string) =>
+  store.decide(id, true, who, 'ok', mintApprovalToken(store.actions().find((a) => a.proposal.id === id)!.proposal, who));
+
+// Most of these refunds are large enough to need two people (see two-person.test.ts), so a
+// second reviewer approves when the first yes leaves it waiting. What's tested is the cap.
+function approve(store: ReturnType<typeof resetStore>, id: string) {
+  const first = decideAs(store, id, REVIEWER);
+  return first?.state === 'PENDING_APPROVAL' ? decideAs(store, id, SECOND) : first;
+}
 
 describe('approving after the budget has moved', () => {
   it('blocks the approval that would push spend past the cap, and charges nothing', () => {
