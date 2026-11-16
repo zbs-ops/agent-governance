@@ -1,6 +1,6 @@
 import { appendEntry, verifyChain } from './audit';
 import { canonical, verifyApprovalToken } from './approvals';
-import { APPROVAL_TTL_MS, UNATTENDED_WINDOW_MS, approvalsRequired, evaluate, money } from './policy';
+import { APPROVAL_TTL_MS, TWO_PERSON_ABOVE_CENTS, UNATTENDED_WINDOW_MS, approvalsRequired, evaluate, money } from './policy';
 import type {
   ActionProposal,
   AuditEntry,
@@ -176,8 +176,16 @@ class MemoryStore implements Store {
 
     // A large action needs two different people. The second yes has to come from someone
     // else; refusing a repeat here, before anything is written, means one reviewer clicking
-    // twice changes nothing.
-    const twoPerson = approve && approvalsRequired(gated.decision) === 2;
+    // twice changes nothing. "Large" counts what already went to the same target within the
+    // approval window, so a $300 refund sent as $200 then $100 still needs two people for the
+    // part that crosses the line.
+    const sent = approve ? this.sentToSameTarget(gated) : 0;
+    const split = sent > 0 && sent + gated.decision.costCents > TWO_PERSON_ABOVE_CENTS;
+    const twoPerson = approve && (approvalsRequired(gated.decision) === 2 || split);
+    const splitWhy = split
+      ? `${money(sent)} already went to the same target in the last ${APPROVAL_TTL_MS / 3_600_000}h; with this ` +
+        `${money(gated.decision.costCents)} it passes the ${money(TWO_PERSON_ABOVE_CENTS)} two-person line.`
+      : undefined;
     if (twoPerson && (gated.approvals ?? []).some((r) => sameActor(r, reviewer))) {
       throw new SameApproverError(reviewer);
     }
@@ -215,13 +223,14 @@ class MemoryStore implements Store {
     if (twoPerson) {
       gated.approvals = [...(gated.approvals ?? []), reviewer];
       const approval = `${gated.approvals.length} of 2`;
+      const detail = { note: note ?? null, approval, ...(splitWhy ? { why: splitWhy } : {}) };
       if (gated.approvals.length < 2) {
         // The first yes is on the record, but the action keeps waiting for a second person.
-        this.record('APPROVED', reviewer, id, { note: note ?? null, approval });
+        this.record('APPROVED', reviewer, id, detail);
         return gated;
       }
       gated.state = 'APPROVED';
-      this.record('APPROVED', reviewer, id, { note: note ?? null, approval });
+      this.record('APPROVED', reviewer, id, detail);
     } else {
       gated.state = 'APPROVED';
       this.record('APPROVED', reviewer, id, { note: note ?? null });
@@ -265,6 +274,30 @@ class MemoryStore implements Store {
         canonical({ agent: g.proposal.agent, tool: g.proposal.tool, args: g.proposal.args }) === key,
     );
     return hit && { id: hit.proposal.id, state: hit.state };
+  }
+
+  /**
+   * What has already been paid out to the same target as this action within the approval
+   * window: actions with the same tool and the same arguments apart from the amount, by any
+   * agent, that ran. Waiting, rejected and blocked ones moved no money and don't count.
+   */
+  private sentToSameTarget(gated: GatedAction): number {
+    const target = (g: GatedAction) => {
+      const { amount_cents: _amount, ...rest } = g.proposal.args;
+      return canonical({ tool: g.proposal.tool, args: rest });
+    };
+    const key = target(gated);
+    const now = Date.parse(gated.proposal.createdAt);
+    return this.gated
+      .filter(
+        (g) =>
+          g !== gated &&
+          g.state === 'EXECUTED' &&
+          g.decision.costCents > 0 &&
+          now - Date.parse(g.proposal.createdAt) < APPROVAL_TTL_MS &&
+          target(g) === key,
+      )
+      .reduce((sum, g) => sum + g.decision.costCents, 0);
   }
 
   private recentUnattendedWrites(agent: string, now: number): number {
