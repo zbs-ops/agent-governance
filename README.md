@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 143 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 152 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -139,7 +139,10 @@ Five rules at approval time:
   understating the estimate doesn't skip the second person. The first yes is logged as
   `1 of 2` and the action keeps waiting; the same reviewer approving again gets a 409 and
   changes nothing; either reviewer can still reject. The budget and the 24-hour window are
-  checked again at the second yes. The dashboard acts as `you@company.com`, so the second
+  checked again at the second yes. Splitting doesn't avoid it either: payments of the same kind
+  to the same target (same tool, same arguments apart from the amount, by any agent) add up over
+  the 24-hour window, so a $300 refund sent as $200 then $100 needs two people for the $100. The
+  ledger says why (`$200.00 already went to the same target...`). The dashboard acts as `you@company.com`, so the second
   approval comes from `finance@company.com` with its own token, through the API.
 
 Two properties are enforced by tests rather than hoped for: the engine is **deterministic**
@@ -153,7 +156,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 143 tests (unit + eval)
+npm test         # 152 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -186,7 +189,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-143 tests, and they're aimed at the things that would actually hurt:
+152 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -217,6 +220,10 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   the same reviewer twice (any capitalisation) is refused and writes nothing; $250 and under
   still need one; an understated estimate doesn't avoid the second person; the budget and the
   approval window are re-checked at the second yes; both approvals are in the ledger
+- splitting it doesn't help: $200 then $100 to the same order needs a second person for the
+  $100, and so does the part of $100 + $99.99 + $50.02 that crosses $250; other agents' refunds
+  to the same order count, other orders don't, nor does money that never moved (waiting or
+  rejected) or that went out more than 24 hours earlier; exactly $250 in total still needs one
 - an approval that arrives more than 24 hours after the request is blocked and charges nothing;
   one at exactly 24 hours still runs, and a forged late approval changes nothing
 - the 11th unattended write from one agent in a minute waits for a person, other agents and
