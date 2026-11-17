@@ -282,11 +282,19 @@ class MemoryStore implements Store {
    * agent, that ran. Waiting, rejected and blocked ones moved no money and don't count.
    */
   private sentToSameTarget(gated: GatedAction): number {
-    const target = (g: GatedAction) => {
+    const mine = targetIds(gated.proposal.args);
+    const exact = (g: GatedAction) => {
       const { amount_cents: _amount, ...rest } = g.proposal.args;
       return canonical({ tool: g.proposal.tool, args: rest });
     };
-    const key = target(gated);
+    const key = exact(gated);
+    const sameTarget = (g: GatedAction) => {
+      // Who the money goes to, whatever tool or other details: a shared order, invoice, customer,
+      // account or recipient. With no identifier at all, only an exact repeat of the rest counts.
+      if (mine.size === 0) return exact(g) === key;
+      for (const id of targetIds(g.proposal.args)) if (mine.has(id)) return true;
+      return false;
+    };
     const now = Date.parse(gated.proposal.createdAt);
     return this.gated
       .filter(
@@ -295,7 +303,7 @@ class MemoryStore implements Store {
           g.state === 'EXECUTED' &&
           g.decision.costCents > 0 &&
           now - Date.parse(g.proposal.createdAt) < APPROVAL_TTL_MS &&
-          target(g) === key,
+          sameTarget(g),
       )
       .reduce((sum, g) => sum + g.decision.costCents, 0);
   }
@@ -352,6 +360,42 @@ class MemoryStore implements Store {
   ): void {
     appendEntry(this.ledger, { at: new Date().toISOString(), event, actor, proposalId, detail });
   }
+}
+
+/**
+ * Argument names that say who or what a payment goes to. Two payments that share one of these
+ * (compared without case or surrounding spaces) go to the same target for the two-person rule, so
+ * a reason, a note, a request id or a different refund tool doesn't make a split look separate.
+ */
+export const TARGET_KEYS = [
+  'order',
+  'order_id',
+  'invoice',
+  'invoice_id',
+  'customer',
+  'customer_id',
+  'account',
+  'account_id',
+  'charge',
+  'charge_id',
+  'payment_intent',
+  'subscription',
+  'user',
+  'user_id',
+  'to',
+  'recipient',
+  'payee',
+] as const;
+
+/** `key=value` for each target identifier in some arguments, normalised. */
+function targetIds(args: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>();
+  for (const k of TARGET_KEYS) {
+    const v = args[k];
+    if (typeof v === 'string' && v.trim()) ids.add(`${k}=${v.trim().toLowerCase()}`);
+    else if (typeof v === 'number' && Number.isFinite(v)) ids.add(`${k}=${v}`);
+  }
+  return ids;
 }
 
 /** A handful of realistic proposals so the page is never empty on first load. */
