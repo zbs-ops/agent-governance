@@ -363,37 +363,43 @@ class MemoryStore implements Store {
 }
 
 /**
- * Argument names that say who or what a payment goes to. Two payments that share one of these
- * (compared without case or surrounding spaces) go to the same target for the two-person rule, so
- * a reason, a note, a request id or a different refund tool doesn't make a split look separate.
+ * What a payment can go to. Two payments that share one of these (compared without case or
+ * surrounding spaces) go to the same target for the two-person rule, so a reason, a note, a
+ * request id or a different refund tool doesn't make a split look separate. An argument names one
+ * when its name, read without case, underscores or a trailing "id", is on this list: `order`,
+ * `order_id`, `orderId` and `ORDER_ID` all name the order.
  */
-export const TARGET_KEYS = [
+export const TARGET_KINDS = [
   'order',
-  'order_id',
   'invoice',
-  'invoice_id',
   'customer',
-  'customer_id',
   'account',
-  'account_id',
   'charge',
-  'charge_id',
-  'payment_intent',
+  'paymentintent',
   'subscription',
   'user',
-  'user_id',
   'to',
   'recipient',
   'payee',
 ] as const;
+const KINDS = new Set<string>(TARGET_KINDS);
 
-/** `key=value` for each target identifier in some arguments, normalised. */
+/** The kind of target an argument name names, if any (`orderId` → `order`). */
+export function targetKind(name: string): string | undefined {
+  const flat = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (KINDS.has(flat)) return flat;
+  if (flat.endsWith('id') && KINDS.has(flat.slice(0, -2))) return flat.slice(0, -2);
+  return undefined;
+}
+
+/** `kind=value` for each target identifier in some arguments, normalised. */
 function targetIds(args: Record<string, unknown>): Set<string> {
   const ids = new Set<string>();
-  for (const k of TARGET_KEYS) {
-    const v = args[k];
-    if (typeof v === 'string' && v.trim()) ids.add(`${k}=${v.trim().toLowerCase()}`);
-    else if (typeof v === 'number' && Number.isFinite(v)) ids.add(`${k}=${v}`);
+  for (const [k, v] of Object.entries(args)) {
+    const kind = targetKind(k);
+    if (!kind) continue;
+    if (typeof v === 'string' && v.trim()) ids.add(`${kind}=${v.trim().toLowerCase()}`);
+    else if (typeof v === 'number' && Number.isFinite(v)) ids.add(`${kind}=${v}`);
   }
   return ids;
 }
