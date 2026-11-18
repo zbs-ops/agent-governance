@@ -388,36 +388,53 @@ const KINDS = new Set<string>(TARGET_KINDS);
 /**
  * An identifier as compared: Unicode-normalised (NFKC, so a full-width "２" is "2"), invisible
  * format characters (zero-width spaces, joiners) dropped, every dash read as "-", trimmed and
- * lower-cased. So the same order typed with a look-alike character is still the same order.
+ * lower-cased. So the same order typed with a look-alike character is still the same order. An
+ * email's `+tag` is dropped (`a+refund2@b.com` reaches a@b.com's mailbox).
  */
-function idValue(value: string): string {
-  return value.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\p{Pd}/gu, '-').trim().toLowerCase();
+function idValue(value: string, kind: string): string {
+  const id = value.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\p{Pd}/gu, '-').trim().toLowerCase();
+  return kind === 'email' ? id.replace(/\+[^@]*@/, '@') : id;
 }
 
-/** The kind of target an argument name names, if any (`orderId` → `order`). */
+/** Words after a target's name that still name it: `order_id`, `orderNumber`, `email_address`. */
+const ID_WORDS = new Set(['id', 'number', 'no', 'num', 'ref', 'reference', 'code', 'address']);
+
+/**
+ * The kind of target an argument name names, if any. The name is split into words (snake_case,
+ * kebab-case, dotted or camelCase), trailing id words are dropped, and the rest, joined
+ * (`paymentIntentId` → `paymentintent`) or as its last word (`customer_email` → `email`), must
+ * be a target kind. `photo` is one word, so it doesn't end in `to`.
+ */
 export function targetKind(name: string): string | undefined {
-  const flat = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (KINDS.has(flat)) return flat;
-  if (flat.endsWith('id') && KINDS.has(flat.slice(0, -2))) return flat.slice(0, -2);
-  return undefined;
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  while (words.length > 1 && ID_WORDS.has(words[words.length - 1])) words.pop();
+  const joined = words.join('');
+  if (KINDS.has(joined)) return joined;
+  const last = words[words.length - 1];
+  return last !== undefined && KINDS.has(last) ? last : undefined;
 }
 
 /**
  * `kind=value` for each target identifier in some arguments, normalised. Nested objects and lists
- * are read too (a few levels deep), and inside a target's own object an `id` names that target.
+ * are read too (up to 32 levels, far deeper than any real payment), and inside a target's own
+ * object an `id` names that target.
  */
 function targetIds(args: Record<string, unknown>): Set<string> {
   const ids = new Set<string>();
   const walk = (value: unknown, kind: string | undefined, depth: number): void => {
-    if (depth > 6) return;
+    if (depth > 32) return;
     if (Array.isArray(value)) {
       for (const v of value) walk(v, kind, depth + 1);
     } else if (value !== null && typeof value === 'object') {
       for (const [k, v] of Object.entries(value)) {
         walk(v, targetKind(k) ?? (k.toLowerCase() === 'id' ? kind : undefined), depth + 1);
       }
-    } else if (kind && typeof value === 'string' && idValue(value)) {
-      ids.add(`${kind}=${idValue(value)}`);
+    } else if (kind && typeof value === 'string' && idValue(value, kind)) {
+      ids.add(`${kind}=${idValue(value, kind)}`);
     } else if (kind && typeof value === 'number' && Number.isFinite(value)) {
       ids.add(`${kind}=${value}`);
     }
