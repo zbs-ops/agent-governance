@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 167 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 201 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -142,8 +142,11 @@ Five rules at approval time:
   checked again at the second yes. Splitting doesn't avoid it either: payments to the same
   target add up over the 24-hour window, so a $300 refund sent as $200 then $100 needs two people
   for the $100. The target is who the money goes to: payments that share an order, invoice,
-  customer, account or recipient (case and spaces ignored) add up whatever tool, reason, note or
-  request id they use, by any agent; two orders for the same customer add up too. With no such
+  customer, account, recipient or email address add up whatever tool, reason, note or request id
+  they use, by any agent; two orders for the same customer add up too. An argument is read by
+  what it names (`order`, `order_id`, `orderId` and `orderNumber` are all the order), nested
+  arguments count, and ids are compared after Unicode normalisation, ignoring case, surrounding
+  spaces and invisible characters. With no such
   identifier, only an exact repeat of the other arguments counts. The ledger says why
   (`$200.00 already went to the same target...`). The dashboard acts as `you@company.com`, so the second
   approval comes from `finance@company.com` with its own token, through the API.
@@ -159,7 +162,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 167 tests (unit + eval)
+npm test         # 201 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -192,7 +195,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-167 tests, and they're aimed at the things that would actually hurt:
+201 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -231,6 +234,11 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   number in another case, a different refund tool (`stripe.refund`, `payout.send`), or leaving the
   order out but naming the same customer all still need the second person; different orders and
   different customers stay separate
+- nor does writing the same target another way: `order_id`, `orderId`, `ORDER_ID`, `orderNumber`,
+  `order_no` or `customer_email` for the same order or person, the order inside a nested object
+  or a list, a look-alike hyphen, an invisible character, a full-width digit, or an email's
+  `+tag`; a word that merely ends in "to" (`photo`), a product code with the order's value, and
+  different mailboxes stay separate
 - an approval that arrives more than 24 hours after the request is blocked and charges nothing;
   one at exactly 24 hours still runs, and a forged late approval changes nothing
 - the 11th unattended write from one agent in a minute waits for a person, other agents and
