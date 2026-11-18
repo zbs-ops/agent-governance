@@ -392,15 +392,27 @@ export function targetKind(name: string): string | undefined {
   return undefined;
 }
 
-/** `kind=value` for each target identifier in some arguments, normalised. */
+/**
+ * `kind=value` for each target identifier in some arguments, normalised. Nested objects and lists
+ * are read too (a few levels deep), and inside a target's own object an `id` names that target.
+ */
 function targetIds(args: Record<string, unknown>): Set<string> {
   const ids = new Set<string>();
-  for (const [k, v] of Object.entries(args)) {
-    const kind = targetKind(k);
-    if (!kind) continue;
-    if (typeof v === 'string' && v.trim()) ids.add(`${kind}=${v.trim().toLowerCase()}`);
-    else if (typeof v === 'number' && Number.isFinite(v)) ids.add(`${kind}=${v}`);
-  }
+  const walk = (value: unknown, kind: string | undefined, depth: number): void => {
+    if (depth > 6) return;
+    if (Array.isArray(value)) {
+      for (const v of value) walk(v, kind, depth + 1);
+    } else if (value !== null && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value)) {
+        walk(v, targetKind(k) ?? (k.toLowerCase() === 'id' ? kind : undefined), depth + 1);
+      }
+    } else if (kind && typeof value === 'string' && value.trim()) {
+      ids.add(`${kind}=${value.trim().toLowerCase()}`);
+    } else if (kind && typeof value === 'number' && Number.isFinite(value)) {
+      ids.add(`${kind}=${value}`);
+    }
+  };
+  walk(args, undefined, 0);
   return ids;
 }
 
