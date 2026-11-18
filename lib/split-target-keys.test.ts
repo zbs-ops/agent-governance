@@ -10,9 +10,15 @@ import { resetStore } from './store';
  * fell back to the exact match so a new reason slipped through), a capitalised name, the order
  * inside a nested object or a list, the same id with a look-alike hyphen, an invisible character
  * or a full-width digit, or a refund to the same email address. The name is now read as what it
- * identifies (order, invoice, customer, email, ...), nested arguments are read too
- * (`{ customer: { id } }` names the customer), and values are compared after Unicode
- * normalisation (NFKC), with invisible format characters dropped and every dash read as "-".
+ * identifies (order, invoice, customer, email, ...): its last word, after a trailing id, number,
+ * no, num, ref, reference or code (`orderNumber`, `order_no`, `customer_email`). Nested arguments
+ * are read too (`{ customer: { id } }` names the customer), values are compared after Unicode
+ * normalisation (NFKC), with invisible format characters dropped and every dash read as "-", and
+ * an email's `+tag` is dropped, since it reaches the same mailbox.
+ *
+ * Left as different targets on purpose: `T1` vs `T-1` and leading zeros (real systems can treat
+ * those as different ids), look-alike letters from other scripts (a payment system would not find
+ * that order), and an id inside a JSON string argument.
  */
 
 const YOU = 'you@company.com';
@@ -49,6 +55,17 @@ describe('the same target written another way', () => {
     ['an invisible character', { order: 'T-1' }, { order: 'T-1​' }],
     ['a full-width digit', { invoice: '8842' }, { invoice: '884２' }],
     ['the same email address with a note', { email: 'a@b.com' }, { email: 'A@b.com', note: 'x' }],
+    ['order, then orderNumber', { order: 'T-1' }, { orderNumber: 'T-1' }],
+    ['order, then order_no', { order: 'T-1' }, { order_no: 'T-1' }],
+    ['invoice, then invoice_ref', { invoice: '8842' }, { invoice_ref: '8842' }],
+    ['account, then accountNumber', { account: '0042' }, { accountNumber: '0042' }],
+    ['email, then customer_email', { email: 'a@b.com' }, { customer_email: 'a@b.com' }],
+    ['the same mailbox with a +tag', { email: 'a@b.com' }, { email: 'a+refund2@b.com' }],
+    [
+      'the order nested eight levels deep',
+      { order: 'T-1' },
+      { a: { b: { c: { d: { e: { f: { g: { order: 'T-1' } } } } } } } },
+    ],
   ])('%s still needs a second person', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('PENDING_APPROVAL');
   });
@@ -61,6 +78,9 @@ describe('the same target written another way', () => {
     ['an id that belongs to something else', { customer: 'acme' }, { product: { id: 'acme' } }],
     ['different email addresses', { email: 'a@b.com' }, { email: 'c@b.com' }],
     ['different orders that differ by one digit', { order: 'T-1' }, { order: 'T-7' }],
+    ['a word that merely ends in "to"', { to: 'acme' }, { photo: 'acme' }],
+    ['a product code with the order\'s value', { order: 'T-1' }, { product_code: 'T-1' }],
+    ['different mailboxes on one domain', { email: 'a+x@b.com' }, { email: 'c+x@b.com' }],
   ])('%s stay separate', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('EXECUTED');
   });
