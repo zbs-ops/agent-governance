@@ -7,8 +7,9 @@ import { resetStore } from './store';
  * #17 matched a target by the exact argument name, so the same order written another way looked
  * like a different target and the second part of a split ran on one approval: `order` then
  * `order_id`, camelCase names (`orderId`, `customerId`, common in JavaScript APIs, which also
- * fell back to the exact match so a new reason slipped through), or a capitalised name. The name
- * is now read as what it identifies (order, invoice, customer, ...).
+ * fell back to the exact match so a new reason slipped through), a capitalised name, or the order
+ * inside a nested object or a list. The name is now read as what it identifies (order, invoice,
+ * customer, ...), and nested arguments are read too (`{ customer: { id } }` names the customer).
  */
 
 const YOU = 'you@company.com';
@@ -37,6 +38,10 @@ describe('the same target written another way', () => {
     ['customerId both times with a note', { customerId: 'acme' }, { customerId: 'acme', note: 'x' }],
     ['ORDER_ID in capitals', { order: 'T-1' }, { ORDER_ID: 'T-1' }],
     ['payment_intent, then paymentIntentId', { payment_intent: 'pi_1' }, { paymentIntentId: 'pi_1' }],
+    ['the order inside a nested object', { order: 'T-1' }, { target: { order: 'T-1' } }],
+    ['the customer as an object with an id', { customer: 'acme' }, { customer: { id: 'acme', name: 'Acme' } }],
+    ['the order in a list', { order: 'T-1' }, { order: ['T-1'] }],
+    ['the order in a list of line items', { order: 'T-1' }, { items: [{ orderId: 'T-1', sku: 'x' }] }],
   ])('%s still needs a second person', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('PENDING_APPROVAL');
   });
@@ -45,6 +50,8 @@ describe('the same target written another way', () => {
     ['different orders under different spellings', { order: 'T-1' }, { orderId: 'T-2' }],
     ['the same value naming different things', { order: '42' }, { invoice: '42' }],
     ['a field that only ends in "id"', { order: 'T-1' }, { paid: 'T-1' }],
+    ['an unrelated nested field', { order: 'T-1' }, { meta: { batch: 'T-1' } }],
+    ['an id that belongs to something else', { customer: 'acme' }, { product: { id: 'acme' } }],
   ])('%s stay separate', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('EXECUTED');
   });
