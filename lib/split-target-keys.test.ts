@@ -7,9 +7,12 @@ import { resetStore } from './store';
  * #17 matched a target by the exact argument name, so the same order written another way looked
  * like a different target and the second part of a split ran on one approval: `order` then
  * `order_id`, camelCase names (`orderId`, `customerId`, common in JavaScript APIs, which also
- * fell back to the exact match so a new reason slipped through), a capitalised name, or the order
- * inside a nested object or a list. The name is now read as what it identifies (order, invoice,
- * customer, ...), and nested arguments are read too (`{ customer: { id } }` names the customer).
+ * fell back to the exact match so a new reason slipped through), a capitalised name, the order
+ * inside a nested object or a list, the same id with a look-alike hyphen, an invisible character
+ * or a full-width digit, or a refund to the same email address. The name is now read as what it
+ * identifies (order, invoice, customer, email, ...), nested arguments are read too
+ * (`{ customer: { id } }` names the customer), and values are compared after Unicode
+ * normalisation (NFKC), with invisible format characters dropped and every dash read as "-".
  */
 
 const YOU = 'you@company.com';
@@ -42,6 +45,10 @@ describe('the same target written another way', () => {
     ['the customer as an object with an id', { customer: 'acme' }, { customer: { id: 'acme', name: 'Acme' } }],
     ['the order in a list', { order: 'T-1' }, { order: ['T-1'] }],
     ['the order in a list of line items', { order: 'T-1' }, { items: [{ orderId: 'T-1', sku: 'x' }] }],
+    ['a look-alike hyphen', { order: 'T-1' }, { order: 'T‑1' }],
+    ['an invisible character', { order: 'T-1' }, { order: 'T-1​' }],
+    ['a full-width digit', { invoice: '8842' }, { invoice: '884２' }],
+    ['the same email address with a note', { email: 'a@b.com' }, { email: 'A@b.com', note: 'x' }],
   ])('%s still needs a second person', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('PENDING_APPROVAL');
   });
@@ -52,6 +59,8 @@ describe('the same target written another way', () => {
     ['a field that only ends in "id"', { order: 'T-1' }, { paid: 'T-1' }],
     ['an unrelated nested field', { order: 'T-1' }, { meta: { batch: 'T-1' } }],
     ['an id that belongs to something else', { customer: 'acme' }, { product: { id: 'acme' } }],
+    ['different email addresses', { email: 'a@b.com' }, { email: 'c@b.com' }],
+    ['different orders that differ by one digit', { order: 'T-1' }, { order: 'T-7' }],
   ])('%s stay separate', (_label, first, second) => {
     expect(secondPart(first, second)).toBe('EXECUTED');
   });

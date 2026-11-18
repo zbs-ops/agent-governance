@@ -381,8 +381,18 @@ export const TARGET_KINDS = [
   'to',
   'recipient',
   'payee',
+  'email',
 ] as const;
 const KINDS = new Set<string>(TARGET_KINDS);
+
+/**
+ * An identifier as compared: Unicode-normalised (NFKC, so a full-width "２" is "2"), invisible
+ * format characters (zero-width spaces, joiners) dropped, every dash read as "-", trimmed and
+ * lower-cased. So the same order typed with a look-alike character is still the same order.
+ */
+function idValue(value: string): string {
+  return value.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\p{Pd}/gu, '-').trim().toLowerCase();
+}
 
 /** The kind of target an argument name names, if any (`orderId` → `order`). */
 export function targetKind(name: string): string | undefined {
@@ -406,8 +416,8 @@ function targetIds(args: Record<string, unknown>): Set<string> {
       for (const [k, v] of Object.entries(value)) {
         walk(v, targetKind(k) ?? (k.toLowerCase() === 'id' ? kind : undefined), depth + 1);
       }
-    } else if (kind && typeof value === 'string' && value.trim()) {
-      ids.add(`${kind}=${value.trim().toLowerCase()}`);
+    } else if (kind && typeof value === 'string' && idValue(value)) {
+      ids.add(`${kind}=${idValue(value)}`);
     } else if (kind && typeof value === 'number' && Number.isFinite(value)) {
       ids.add(`${kind}=${value}`);
     }
