@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 201 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 236 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -146,7 +146,10 @@ Five rules at approval time:
   they use, by any agent; two orders for the same customer add up too. An argument is read by
   what it names (`order`, `order_id`, `orderId` and `orderNumber` are all the order), nested
   arguments count, and ids are compared after Unicode normalisation, ignoring case, surrounding
-  spaces and invisible characters. With no such
+  spaces and invisible characters. Payouts count the same way: a vendor, merchant, beneficiary,
+  employee, IBAN, card, wallet or phone is a target, every name for who gets paid shares one
+  namespace (`to` then `recipient`, `payee` then `vendor`), and account, card and phone numbers
+  are compared without spaces, dashes or brackets. With no such
   identifier, only an exact repeat of the other arguments counts. The ledger says why
   (`$200.00 already went to the same target...`). The dashboard acts as `you@company.com`, so the second
   approval comes from `finance@company.com` with its own token, through the API.
@@ -162,7 +165,7 @@ because the reason it gives is the reason that lands in the audit log.
 ```bash
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 201 tests (unit + eval)
+npm test         # 236 tests (unit + eval)
 npm run eval     # adversarial scorecard only
 ```
 
@@ -195,7 +198,7 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
 
 ### Tests
 
-201 tests, and they're aimed at the things that would actually hurt:
+236 tests, and they're aimed at the things that would actually hurt:
 
 - a changed value, a changed actor, a **deleted** entry, and a **reordered** pair are each
   caught, and the verifier names the sequence number where the chain breaks
@@ -239,6 +242,11 @@ Writing it found five spoofing holes in the first run (14/19); they're closed. L
   or a list, a look-alike hyphen, an invisible character, a full-width digit, or an email's
   `+tag`; a word that merely ends in "to" (`photo`), a product code with the order's value, and
   different mailboxes stay separate
+- and payouts get the same treatment: the same vendor, merchant, supplier, beneficiary, employee,
+  contractor, IBAN, card, wallet, phone or PayPal account, under any of its names and with or
+  without spaces in the number, still needs the second person; different vendors and IBANs, an
+  app's own `client_id`, the same bank's routing number, a shared postal address, and an order
+  and an invoice with the same number stay separate
 - an approval that arrives more than 24 hours after the request is blocked and charges nothing;
   one at exactly 24 hours still runs, and a forged late approval changes nothing
 - the 11th unattended write from one agent in a minute waits for a person, other agents and
