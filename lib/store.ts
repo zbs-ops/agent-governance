@@ -402,8 +402,19 @@ export const TARGET_KINDS = [
 ] as const;
 const KINDS = new Set<string>(TARGET_KINDS);
 
-/** Kinds that name the same thing: a payout's destination or IBAN is its account. */
-const SAME_KIND: Record<string, string> = { destination: 'account', iban: 'account', paypal: 'email' };
+/**
+ * Kinds that say who gets paid. They share one namespace, so the same value under any two of them
+ * (`to` then `recipient`, `payee` then `vendor`, an IBAN then a bank account) is the same target.
+ * The other kinds (order, invoice, charge, payment intent, subscription) say what a payment is for
+ * and keep one namespace each, so order 42 and invoice 42 stay apart.
+ */
+const PAYEE_KINDS = new Set<string>([
+  'customer', 'account', 'user', 'to', 'recipient', 'payee', 'email', 'vendor', 'merchant', 'supplier',
+  'beneficiary', 'employee', 'contractor', 'counterparty', 'member', 'destination', 'iban', 'card',
+  'wallet', 'phone', 'paypal',
+]);
+/** Kinds whose values are numbers people format with spaces, dashes, dots or brackets. */
+const NUMBER_KINDS = new Set<string>(['account', 'destination', 'iban', 'card', 'phone']);
 
 /**
  * An identifier as compared: Unicode-normalised (NFKC, so a full-width "２" is "2"), invisible
@@ -413,11 +424,12 @@ const SAME_KIND: Record<string, string> = { destination: 'account', iban: 'accou
  */
 function idValue(value: string, kind: string): string {
   const id = value.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\p{Pd}/gu, '-').trim().toLowerCase();
-  return kind === 'email' ? id.replace(/\+[^@]*@/, '@') : id;
+  if (NUMBER_KINDS.has(kind)) return id.replace(/[\s.()-]/g, '');
+  return PAYEE_KINDS.has(kind) && /^[^@\s]+@[^@\s]+$/.test(id) ? id.replace(/\+[^@]*@/, '@') : id;
 }
 
 /** Words after a target's name that still name it: `order_id`, `orderNumber`, `email_address`. */
-const ID_WORDS = new Set(['id', 'number', 'no', 'num', 'ref', 'reference', 'code', 'address']);
+const ID_WORDS = new Set(['id', 'number', 'no', 'num', 'ref', 'reference', 'code', 'address', 'name']);
 
 /**
  * The kind of target an argument name names, if any. The name is split into words (snake_case,
@@ -434,8 +446,7 @@ export function targetKind(name: string): string | undefined {
   while (words.length > 1 && ID_WORDS.has(words[words.length - 1])) words.pop();
   const joined = words.join('');
   const last = words[words.length - 1];
-  const kind = KINDS.has(joined) ? joined : last !== undefined && KINDS.has(last) ? last : undefined;
-  return kind === undefined ? undefined : (SAME_KIND[kind] ?? kind);
+  return KINDS.has(joined) ? joined : last !== undefined && KINDS.has(last) ? last : undefined;
 }
 
 /**
@@ -454,9 +465,9 @@ function targetIds(args: Record<string, unknown>): Set<string> {
         walk(v, targetKind(k) ?? (k.toLowerCase() === 'id' ? kind : undefined), depth + 1);
       }
     } else if (kind && typeof value === 'string' && idValue(value, kind)) {
-      ids.add(`${kind}=${idValue(value, kind)}`);
+      ids.add(`${PAYEE_KINDS.has(kind) ? 'payee' : kind}=${idValue(value, kind)}`);
     } else if (kind && typeof value === 'number' && Number.isFinite(value)) {
-      ids.add(`${kind}=${value}`);
+      ids.add(`${PAYEE_KINDS.has(kind) ? 'payee' : kind}=${value}`);
     }
   };
   walk(args, undefined, 0);
