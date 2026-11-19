@@ -382,8 +382,28 @@ export const TARGET_KINDS = [
   'recipient',
   'payee',
   'email',
+  // Where a payout goes. Left out on purpose, because they'd add up payments to different people:
+  // `client` (`client_id` is usually the app's own credential), `routing` (a bank, not an account)
+  // and a bare `address` (often a postal address; `wallet_address` still counts).
+  'vendor',
+  'merchant',
+  'supplier',
+  'beneficiary',
+  'employee',
+  'contractor',
+  'counterparty',
+  'member',
+  'destination',
+  'iban',
+  'card',
+  'wallet',
+  'phone',
+  'paypal',
 ] as const;
 const KINDS = new Set<string>(TARGET_KINDS);
+
+/** Kinds that name the same thing: a payout's destination or IBAN is its account. */
+const SAME_KIND: Record<string, string> = { destination: 'account', iban: 'account', paypal: 'email' };
 
 /**
  * An identifier as compared: Unicode-normalised (NFKC, so a full-width "２" is "2"), invisible
@@ -413,9 +433,9 @@ export function targetKind(name: string): string | undefined {
     .filter(Boolean);
   while (words.length > 1 && ID_WORDS.has(words[words.length - 1])) words.pop();
   const joined = words.join('');
-  if (KINDS.has(joined)) return joined;
   const last = words[words.length - 1];
-  return last !== undefined && KINDS.has(last) ? last : undefined;
+  const kind = KINDS.has(joined) ? joined : last !== undefined && KINDS.has(last) ? last : undefined;
+  return kind === undefined ? undefined : (SAME_KIND[kind] ?? kind);
 }
 
 /**
