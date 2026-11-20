@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 266 tests, including a 31-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 279 tests, including a 31-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -96,10 +96,11 @@ Eight rules override the tier entirely:
   cents amount in the arguments, would slip past the budget math, so it never reaches it.
 - **Amount with no unit** → refused on a tool that moves money. `amount: 300` is $3.00 to
   Stripe and $300 to most other APIs, so the gate asks for the amount in cents (`amount_cents`)
-  rather than guess. `amount`, `total`, `value`, `price`, `sum` and `subtotal` count, nested too.
+  rather than guess. Names containing `amount`, `total` or `price` (`totalamount`, `unitprice`),
+  and `value` or `sum`, count, nested too.
 - **Over budget** → refused, checked before anything else is weighed. The cost checked is
   the larger of the agent's estimate and what its arguments will actually move: any field whose
-  name ends in cents (`amount_cents`, `amountCents`, `amount_in_cents`, `cents`), at any depth,
+  name ends in cents (`amount_cents`, `amountCents`, `amountcents`, `cents`), at any depth,
   with a list of line items counted as their sum.
 - **Understated cost** → escalated to a human when the arguments move more than the agent
   estimated, even on a tool that would normally run unattended. The approver sees the real
