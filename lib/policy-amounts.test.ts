@@ -75,6 +75,26 @@ describe('amounts written in cents under another name', () => {
   });
 });
 
+describe('names written as one word', () => {
+  // #20 split names into words, so `amountcents` (one word, not "cents") was neither priced nor
+  // refused: charged $0, like the forms #20 closed. A word that ends in cents is priced; a word that
+  // contains amount, total or price, or is value or sum, is an amount.
+  it.each(['amountcents', 'totalcents', 'amountincents', 'AMOUNTCENTS'])('%s is charged', (key) => {
+    const decision = evaluate(proposal('refund.issue', 0, { [key]: 30_000 }), BUDGET);
+    expect(decision.costCents).toBe(30_000);
+    expect(decision.decidedBy).toBe('cost-understated');
+  });
+
+  it.each(['amountusd', 'totalamount', 'unitprice', 'refundamount', 'grandtotal'])('%s is refused', (key) => {
+    const decision = evaluate(proposal('refund.issue', 0, { [key]: 300 }), BUDGET);
+    expect(decision.decidedBy).toBe('unpriced-amount');
+  });
+
+  it.each(['consumer', 'summary', 'count', 'valueset'])('%s is not an amount', (key) => {
+    expect(evaluate(proposal('refund.issue', 0, { [key]: 123 }), BUDGET).decidedBy).toBe('money-movement');
+  });
+});
+
 describe('amounts with no unit on a tool that moves money', () => {
   it.each([
     ['amount', { amount: 300 }],
