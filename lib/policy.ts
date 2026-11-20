@@ -164,15 +164,25 @@ export function evaluate(proposal: ActionProposal, budget: Budget, history: Hist
     reasons.push(`An estimated cost of ${String(estimate)} cents is not a whole, non-negative amount.`);
     return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost', costCents: 0 };
   }
-  const argAmount = proposal.args.amount_cents;
-  if (argAmount !== undefined && !isCents(argAmount)) {
-    reasons.push(`The arguments ask to move ${String(argAmount)} cents, which is not a whole, non-negative amount.`);
+  const amounts = readAmounts(proposal.args);
+  if (amounts.malformed !== undefined) {
+    reasons.push(amounts.malformed);
     return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'malformed-cost', costCents: 0 };
   }
 
-  // The estimate is the agent's word; amount_cents is what the call will do. Charge
-  // whichever is larger, so understating the estimate can't buy room under the cap.
-  const cost = Math.max(estimate, typeof argAmount === 'number' ? argAmount : 0);
+  // 2b. An amount with no unit can't be priced: `amount: 300` is $3.00 to Stripe and $300
+  //     to most other APIs. On a tool that moves money, guessing wrong misprices the call a
+  //     hundredfold, so the agent is told to say it in cents instead.
+  if (rule.id === 'money-movement' && amounts.unpriced.length > 0) {
+    reasons.push(
+      `The arguments name an amount without a unit (${amounts.unpriced.join(', ')}). State what the call will move in cents, as amount_cents, so it can be priced.`,
+    );
+    return { verdict: 'DENY', tier: rule.tier, reasons, decidedBy: 'unpriced-amount', costCents: 0 };
+  }
+
+  // The estimate is the agent's word; the cents in the arguments are what the call will
+  // do. Charge whichever is larger, so understating the estimate can't buy room under the cap.
+  const cost = Math.max(estimate, amounts.cents);
   const understated = cost > estimate;
 
   // 3. Budget is checked before anything else is weighed, because a runaway
@@ -235,6 +245,79 @@ export function evaluate(proposal: ActionProposal, budget: Budget, history: Hist
   }
 
   return { verdict: 'ALLOW', tier: 1, reasons, decidedBy: rule.id, costCents: cost };
+}
+
+const MAX_ARG_DEPTH = 32;
+const UNIT_FREE_AMOUNT_WORDS = new Set(['amount', 'total', 'value', 'price', 'sum', 'subtotal']);
+const NUMERIC_TEXT = /^[-+]?\$?\d[\d,]*(\.\d+)?$/;
+
+/** `amountCents`, `AMOUNT_CENTS`, `amount-in-cents` -> lower-case words. */
+function keyWords(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function isCentsKey(key: string): boolean {
+  return keyWords(key).at(-1) === 'cents';
+}
+
+interface Amounts {
+  /** The largest amount the arguments state in cents: one field, or one list of line items summed. */
+  cents: number;
+  /** Paths of numbers named like an amount but with no unit. */
+  unpriced: string[];
+  /** Why the arguments can't be priced at all, if they can't. */
+  malformed?: string;
+}
+
+/**
+ * Reads every amount the arguments state, at any depth. A field counts as cents when the last
+ * word of its name is "cents" (`amount_cents`, `amountCents`, `amount_in_cents`, `cents`), and
+ * a list of objects that each carry one counts as their sum, so line items can't be priced at
+ * their largest line. Arguments nested past MAX_ARG_DEPTH are refused rather than half read.
+ */
+function readAmounts(args: Record<string, unknown>): Amounts {
+  const out: Amounts = { cents: 0, unpriced: [] };
+  const walk = (value: unknown, path: string, depth: number): void => {
+    if (out.malformed !== undefined) return;
+    if (depth > MAX_ARG_DEPTH) {
+      out.malformed = `The arguments are nested more than ${MAX_ARG_DEPTH} levels deep, too deep to price.`;
+      return;
+    }
+    if (Array.isArray(value)) {
+      let sum = 0;
+      value.forEach((item, i) => {
+        walk(item, `${path}[${i}]`, depth + 1);
+        if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+          for (const [k, v] of Object.entries(item)) if (isCentsKey(k) && isCents(v)) sum += v;
+        }
+      });
+      if (!Number.isSafeInteger(sum)) out.malformed = `The line items under ${path} add up to more cents than can be counted.`;
+      else out.cents = Math.max(out.cents, sum);
+      return;
+    }
+    if (value === null || typeof value !== 'object') return;
+    for (const [k, v] of Object.entries(value)) {
+      const at = path ? `${path}.${k}` : k;
+      if (isCentsKey(k)) {
+        if (v === undefined) continue;
+        if (!isCents(v)) {
+          out.malformed = `The arguments ask to move ${String(v)} cents${at === 'amount_cents' ? '' : ` (${at})`}, which is not a whole, non-negative amount.`;
+          return;
+        }
+        out.cents = Math.max(out.cents, v);
+        continue;
+      }
+      const numeric = typeof v === 'number' || (typeof v === 'string' && NUMERIC_TEXT.test(v.trim()));
+      if (numeric && keyWords(k).some((w) => UNIT_FREE_AMOUNT_WORDS.has(w))) out.unpriced.push(at);
+      walk(v, at, depth + 1);
+    }
+  };
+  walk(args, '', 0);
+  return out;
 }
 
 /** A whole, non-negative number of cents that the budget arithmetic can trust. */
