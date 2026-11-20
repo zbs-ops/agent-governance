@@ -4,7 +4,7 @@
 >
 > **Approach:** every tool call is a proposal; a deterministic policy gate allows, escalates, or refuses it; approvals are authenticated; every event lands in a hash-chained log.
 >
-> **Proof:** 236 tests, including a 27-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
+> **Proof:** 266 tests, including a 31-scenario adversarial eval, run in CI on every change. [Live demo](https://agent-governance-theta.vercel.app).
 
 
 **[Open the live demo →](https://agent-governance-theta.vercel.app)**
@@ -93,9 +93,14 @@ Eight rules override the tier entirely:
   never gets the chance to borrow another rule.
 - **Unknown tool** → refused. Fails closed.
 - **Malformed cost** → refused. A negative, fractional, or non-numeric estimate, or
-  `amount_cents` in the arguments, would slip past the budget math, so it never reaches it.
+  cents amount in the arguments, would slip past the budget math, so it never reaches it.
+- **Amount with no unit** → refused on a tool that moves money. `amount: 300` is $3.00 to
+  Stripe and $300 to most other APIs, so the gate asks for the amount in cents (`amount_cents`)
+  rather than guess. `amount`, `total`, `value`, `price`, `sum` and `subtotal` count, nested too.
 - **Over budget** → refused, checked before anything else is weighed. The cost checked is
-  the larger of the agent's estimate and the `amount_cents` its arguments will actually move.
+  the larger of the agent's estimate and what its arguments will actually move: any field whose
+  name ends in cents (`amount_cents`, `amountCents`, `amount_in_cents`, `cents`), at any depth,
+  with a list of line items counted as their sum.
 - **Understated cost** → escalated to a human when the arguments move more than the agent
   estimated, even on a tool that would normally run unattended. The approver sees the real
   amount, and the real amount is what gets charged.
@@ -189,12 +194,12 @@ the hash chain are plain TypeScript, which is why they're easy to test and easy 
 ### Adversarial eval
 
 `evals/` asks a different question from the unit tests: when an agent is confused, careless,
-or probing, does the gate still give the safe answer? 24 scenarios across four categories
+or probing, does the gate still give the safe answer? 31 scenarios across four categories
 (baseline, tool spoofing, cost manipulation, budget pressure), each with the verdict a careful
 operator would want. `npm run eval` prints a scorecard and fails on any miss. CI runs it on
 every push, alongside typecheck, tests and a production build.
 
-Writing it found five spoofing holes in the first run (14/19); they're closed. Later scenarios cover an agent understating its cost and a runaway loop of writes (24/24).
+Writing it found five spoofing holes in the first run (14/19); they're closed. Later scenarios cover an agent understating its cost and a runaway loop of writes (24/24), and later an amount written under another name (31/31).
 
 ### Tests
 
