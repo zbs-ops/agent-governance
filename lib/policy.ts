@@ -248,7 +248,11 @@ export function evaluate(proposal: ActionProposal, budget: Budget, history: Hist
 }
 
 const MAX_ARG_DEPTH = 32;
-const UNIT_FREE_AMOUNT_WORDS = new Set(['amount', 'total', 'value', 'price', 'sum', 'subtotal']);
+// A name is often one run-together word (`totalamount`, `unitprice`), so these count inside a
+// word. `value` and `sum` only count whole: inside a word they are usually something else
+// (`valueset`, `summary`, `consumer`).
+const AMOUNT_WORD_PARTS = ['amount', 'total', 'price'];
+const AMOUNT_WORDS = new Set(['value', 'sum']);
 const NUMERIC_TEXT = /^[-+]?\$?\d[\d,]*(\.\d+)?$/;
 
 /** `amountCents`, `AMOUNT_CENTS`, `amount-in-cents` -> lower-case words. */
@@ -260,8 +264,13 @@ function keyWords(key: string): string[] {
     .filter(Boolean);
 }
 
+/** `amount_cents`, `amountCents`, and run together, `amountcents`. */
 function isCentsKey(key: string): boolean {
-  return keyWords(key).at(-1) === 'cents';
+  return keyWords(key).at(-1)?.endsWith('cents') ?? false;
+}
+
+function isAmountKey(key: string): boolean {
+  return keyWords(key).some((w) => AMOUNT_WORDS.has(w) || AMOUNT_WORD_PARTS.some((part) => w.includes(part)));
 }
 
 interface Amounts {
@@ -275,7 +284,7 @@ interface Amounts {
 
 /**
  * Reads every amount the arguments state, at any depth. A field counts as cents when the last
- * word of its name is "cents" (`amount_cents`, `amountCents`, `amount_in_cents`, `cents`), and
+ * word of its name ends in "cents" (`amount_cents`, `amountCents`, `amountcents`, `cents`), and
  * a list of objects that each carry one counts as their sum, so line items can't be priced at
  * their largest line. Arguments nested past MAX_ARG_DEPTH are refused rather than half read.
  */
@@ -312,7 +321,7 @@ function readAmounts(args: Record<string, unknown>): Amounts {
         continue;
       }
       const numeric = typeof v === 'number' || (typeof v === 'string' && NUMERIC_TEXT.test(v.trim()));
-      if (numeric && keyWords(k).some((w) => UNIT_FREE_AMOUNT_WORDS.has(w))) out.unpriced.push(at);
+      if (numeric && isAmountKey(k)) out.unpriced.push(at);
       walk(v, at, depth + 1);
     }
   };
